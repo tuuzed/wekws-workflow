@@ -34,7 +34,7 @@
 | 阶段 | 外层入口 | 主要产物 |
 | :--- | :--- | :--- |
 | 环境 | `scripts/common/env.sh`、`scripts/common/check_deps.sh` | 统一路径、Python、pycache、版本检查 |
-| 下载 | `scripts/01_data/download_mobvoi.sh`、`download_mobvoi_transcription.sh` | `work/downloads/` |
+| 下载 | `scripts/01_data/download_mobvoi.sh`、`download_mobvoi_transcription.sh`、`download_pretrained.sh` | `work/downloads/` |
 | 数据 | `scripts/01_data/prepare_dict.sh`、`prepare_mobvoi.sh`、`regenerate_data_lists.sh` | `work/dict/hi_xiaowen/`、`work/data/hi_xiaowen/` |
 | 训练 | `scripts/02_train/train_ctc.sh` | `work/exp/hi_xiaowen/ds_tcn_ctc/` |
 | 续训 | `scripts/02_train/resume_ctc.sh --checkpoint <file>` | `work/exp/hi_xiaowen/ds_tcn_ctc_resume/` |
@@ -54,6 +54,7 @@
 | `CONFIG_DIR` | `$WORKSPACE_ROOT/config/hi_xiaowen` |
 | `MOBVOI_DIR` | `$WORK/downloads/mobvoi` |
 | `MOBVOI_TRANSCRIPTION_DIR` | `$WORK/downloads/mobvoi_kws_transcription` |
+| `PRETRAINED_DIR` | `$WORK/downloads/pretrained` |
 | `EXAMPLE_DATA` | `$WORK/data/hi_xiaowen` |
 | `EXAMPLE_DICT` | `$WORK/dict/hi_xiaowen` |
 | `EXAMPLE_EXP` | `$WORK/exp/hi_xiaowen/ds_tcn_ctc` |
@@ -94,6 +95,20 @@ bash scripts/01_data/download_mobvoi_transcription.sh
 - `download_mobvoi.sh` 下载并解压 MobvoiHotwords 到 `$MOBVOI_DIR`。
 - `download_mobvoi_transcription.sh` 克隆完整 `mobvoi_kws_transcription` 到 `$MOBVOI_TRANSCRIPTION_DIR`，保留其 `.git`，并校验 `23.pt` / `tokens.txt`。
 - 两个脚本都是幂等的：目标存在时跳过，不把下载物放回 `wekws/examples/hi_xiaowen/s0/`。
+
+预置的完整训练产物归档通过单独脚本获取（归档不进 Git，规避平台的 100MB LFS 单文件限制）：
+
+默认地址写在 `config/pretrained/ds_tcn_ctc.env`，指向 ModelScope 的 `ds_tcn_ctc.tar.gz`；需要换源时用 `--url` 覆盖：
+
+```bash
+source scripts/common/env.sh
+bash scripts/01_data/download_pretrained.sh
+bash scripts/01_data/download_pretrained.sh --download-only   # 只下载校验，不解包
+```
+
+- 归档落在 `$PRETRAINED_DIR`（`work/downloads/pretrained/`），下载前后校验 sha256；校验值和默认 URL 都在 `config/pretrained/ds_tcn_ctc.env`。
+- 校验通过后解包到暂存目录，再核对 epoch 链 `0..79` 与 `avg_30.pt` 哈希，最后以**不覆盖**方式落入 `work/exp/hi_xiaowen/ds_tcn_ctc/` 和 `work/eval/avg_30_pt/`；已有同名文件不同时会报错并提示用 `--force`，不会静默改写部署 checkpoint。
+- 脚本只写 `work/`，不写只读的 `wekws/`；重复执行是安全的。
 
 ### 2.3 数据准备
 
@@ -137,7 +152,7 @@ bash scripts/02_train/train_ctc.sh --gpus 0
 bash scripts/02_train/train_ctc.sh --gpus 0 --checkpoint "$BASE_CHECKPOINT"
 ```
 
-不要把 `init.pt` 用于正常微调或续训；它会破坏当前 2599 维 token 映射与 checkpoint 链。
+不要把 `init.pt` 用于正常微调或续训：它是 `train.py:215-217` 在 `start_epoch==0` 时保存的训练前初始化权重，不是训练产物；同名 `init.yaml` 为空会让 epoch 从 0 重新计数，续训入口也会直接拒绝它。
 
 ### 3.2 续训
 
@@ -151,8 +166,46 @@ bash scripts/02_train/resume_ctc.sh \
 - `--checkpoint` 必填，且拒绝 `init.pt`。
 - 使用 `config/hi_xiaowen/ds_tcn_ctc_resume.yaml`（`lr: 0.0005`），不修改基础配置。
 - 默认写入 `work/exp/hi_xiaowen/ds_tcn_ctc_resume/`，与原始训练目录分离。
-- 上游 `train.py` 只加载权重，不恢复优化器、调度器和 epoch 计数；日志再次出现 `Epoch 0` 是正常行为。
-- 学习率只能通过 resume yaml 调整，不通过不存在的训练参数传入。
+- 上游 `train.py` 只加载 `state_dict`，不恢复优化器和调度器；`epoch` / `lr` / `cv_loss` 来自 checkpoint 的**同名 `.yaml`**。`avg_30.pt` 没有同名 yaml，因此从 `Epoch 0`、lr `0.0005` 开始，日志再次出现 `Epoch 0` 是正常行为；带同名 yaml 的 checkpoint 则不一定从 0 开始。
+- 学习率只在 yaml 中，不通过不存在的训练参数传入；若 checkpoint 有同名 yaml，其 `lr` 会覆盖 resume config 的 `lr`（`train.py:181-182`）。
+
+### 3.3 从预置归档 checkpoint 续训
+
+`download_pretrained.sh` 取回的归档（见 §2.2）可以直接作为续训起点。推荐先用脚本恢复产物，再从 `$EXAMPLE_EXP` 取权重，避免把下载暂存目录当成长期来源：
+
+```bash
+source scripts/common/env.sh
+
+# 先恢复预置产物；默认地址已写入 config/pretrained/ds_tcn_ctc.env
+bash scripts/01_data/download_pretrained.sh
+
+# 前置：数据准备和字典必须先就绪（见 §2.3）
+bash scripts/01_data/download_mobvoi.sh
+bash scripts/01_data/prepare_dict.sh
+bash scripts/01_data/prepare_mobvoi.sh
+bash scripts/01_data/regenerate_data_lists.sh
+
+# 先预览命令，不启动训练
+DRY_RUN=1 bash scripts/02_train/resume_ctc.sh \
+  --checkpoint "$EXAMPLE_EXP/avg_30.pt" --gpus 0
+
+# 实际执行
+bash scripts/02_train/resume_ctc.sh \
+  --checkpoint "$EXAMPLE_EXP/avg_30.pt" --gpus 0
+```
+
+归档内可选 checkpoint 的差别：
+
+| 文件 | 同名 `.yaml` | 交给 `resume_ctc.sh` 的结果 |
+| :--- | :--- | :--- |
+| `avg_30.pt` | 无 | `start_epoch=0`、lr `0.0005`；推荐 |
+| `final.pt` | 无（它是指向 `79.pt` 的软链接） | 同 `avg_30.pt`，但权重是最后一个 epoch |
+| `79.pt` | `epoch: 79`、`lr: 1.0e-06` | `start_epoch=80`；现有 resume config 的 `max_epoch: 80` 会使训练循环不执行 |
+| `init.pt` | `{}` | 脚本直接拒绝 |
+
+若要从 `79.pt` 之后真正继续，不能直接用现有 resume config：需要用 `--config` 传一份把 `max_epoch` 提到大于 80 的新配置；同时同名 yaml 的 `lr: 1.0e-06` 会覆盖配置里的 lr，可行做法是把 `79.pt` 复制成新文件名并配套同名 yaml（例如 `epoch: 79`、`lr: 0.0005`），再用新文件作为 `--checkpoint`。优化器和调度器状态仍不会恢复。
+
+不要把 `train_ctc.sh` 的 `--checkpoint` 指向这些归档：它默认写入 `$EXAMPLE_EXP` 并使用 lr `0.001` 的基础配置，会覆盖部署产物。
 
 ---
 
@@ -379,7 +432,7 @@ bash scripts/05_deploy/build_apk.sh
 | 关键词变成乱码 | 评测入口传了中文字面量 | 使用 `\u55e8\u5c0f\u95ee,\u4f60\u597d\u95ee\u95ee` |
 | `average_model.py` 报 checkpoint/yaml 数量不足 | 可用 checkpoint 少于 30 | 使用实际 N 生成 `avg_N.pt`，或直接用 `final.pt`；不要用 DRY_RUN 伪装训练 |
 | CUDA OOM | batch 过大或训练与评测共用 GPU | 只改外层 `config/hi_xiaowen/ds_tcn_ctc.yaml` 的 batch；等待训练结束或降低评估 batch |
-| 续训日志从 `Epoch 0` 开始 | 上游只加载权重，不恢复 epoch/优化器 | 正常行为；使用独立 resume 模型和 tensorboard 目录，学习率由 resume config 控制 |
+| 续训日志从 `Epoch 0` 开始 | checkpoint 没有同名 yaml（如 `avg_30.pt`）；上游只读 `state_dict` 与同名 yaml 元数据，不恢复优化器 | 正常行为；使用独立 resume 模型和 tensorboard 目录。若传 `79.pt` 且同名 yaml 含 `epoch: 79`，则会从 `Epoch 80` 开始；见 §3.3 |
 | `build_apk.sh` 报 SDK 未找到 | 本机未配置 Android SDK | 设置 `ANDROID_HOME` / `ANDROID_SDK_ROOT` 并提供 `android.jar`；否则只做 Native host 与 score 对齐 |
 | CLI 报 `--dump_frame_topk requires --detail_file` | 打开逐帧调试却未指定 detail 文件 | 同时传入 `--detail_file`；该文件只用于调试 |
 
@@ -388,9 +441,10 @@ bash scripts/05_deploy/build_apk.sh
 ## 9. 推荐验收清单
 
 1. `bash scripts/common/check_deps.sh` 通过。
-2. 数据清单中所有 wav 都在 `work/` 下且文件存在。
-3. 训练/续训产物与 tensorboard 日志位于 `work/`，`wekws/` 内无项目落地文件或本地修改。
-4. `eval_ctc.sh` 生成 3 位小数 `score.txt`、`stats/*.txt`、`det.png`，并保留当前/历史/部署三类阈值语义。
-5. Android 导出资产成组一致，per-keyword 阈值写入 `config.json`，无全局 `ctc.trigger_threshold`。
-6. Native / ORT / infer_core 对齐数据符合上表，score 与事件语义未被调试字段改变。
-7. 若无 Android SDK，APK 构建保持“未执行/环境缺失”状态，不以 Native host 成功替代 APK 验证。
+2. `download_pretrained.sh` 校验归档与 `avg_30.pt` sha256、epoch 链 `0..79`，重复执行不覆盖已有产物（必要时才用 `--force`）。
+3. 数据清单中所有 wav 都在 `work/` 下且文件存在。
+4. 训练/续训产物与 tensorboard 日志位于 `work/`，`wekws/` 内无项目落地文件或本地修改。
+5. `eval_ctc.sh` 生成 3 位小数 `score.txt`、`stats/*.txt`、`det.png`，并保留当前/历史/部署三类阈值语义。
+6. Android 导出资产成组一致，per-keyword 阈值写入 `config.json`，无全局 `ctc.trigger_threshold`。
+7. Native / ORT / infer_core 对齐数据符合上表，score 与事件语义未被调试字段改变。
+8. 若无 Android SDK，APK 构建保持“未执行/环境缺失”状态，不以 Native host 成功替代 APK 验证。

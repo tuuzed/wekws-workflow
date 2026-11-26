@@ -108,6 +108,18 @@ bash scripts/01_data/prepare_dict.sh
 
 外层 `prepare_mobvoi.sh` 已统一使用 `--num_workers 8`，无需修改上游脚本。若日志仍出现 workers 警告，优先检查 CPU 配额和 `$WORK/data/hi_xiaowen/train/global_cmvn` 是否正常生成。
 
+### 2.4 获取预置训练产物归档
+
+完整的 80-epoch 训练产物归档不进 Git（规避平台 100MB LFS 单文件限制），需要单独下载。默认地址写在 `config/pretrained/ds_tcn_ctc.env`，可用 `--url` 覆盖：
+
+```bash
+source scripts/common/env.sh
+bash scripts/01_data/download_pretrained.sh
+bash scripts/01_data/download_pretrained.sh --download-only   # 只下载校验，不解包
+```
+
+脚本校验归档与 `avg_30.pt` 的 sha256、检查 epoch 链 `0..79`，再以**不覆盖**方式恢复 `work/exp/hi_xiaowen/ds_tcn_ctc/` 与 `work/eval/avg_30_pt/`；已有同名文件不同时会报错并提示 `--force`。详见[当前脚本工作流指导手册](script_workflow_guide.md) §2.2。
+
 
 ## 三、训练配置与启动（含显存调优与续训）
 
@@ -134,6 +146,7 @@ base checkpoint 固定为 `work/downloads/mobvoi_kws_transcription/23.pt`。若�
 | `scripts/01_data/prepare_mobvoi.sh` | 生成 `wav.scp` / `text` / `wav.dur` / CMVN |
 | `scripts/01_data/regenerate_data_lists.sh` | 重新生成指向 `work/` 的 `data.list` |
 | `scripts/01_data/prepare_dict.sh` | 从 `tokens.txt` 生成 `dict.txt` / `words.txt` |
+| `scripts/01_data/download_pretrained.sh` | 下载并校验预置 80-epoch 产物归档 |
 | `scripts/02_train/train_ctc.sh` | 初始微调与训练循环 |
 | `scripts/02_train/resume_ctc.sh` | 独立目录续训 |
 | `scripts/04_eval/eval_ctc.sh` | 模型平均、score、DET 与 FRR/FAR 报告 |
@@ -187,9 +200,46 @@ bash scripts/02_train/resume_ctc.sh \
   --checkpoint "$EXAMPLE_EXP/avg_30.pt"
 ```
 
-`scripts/02_train/resume_ctc.sh` 使用 `config/hi_xiaowen/ds_tcn_ctc_resume.yaml`（`lr: 0.0005`，低于基础配置的 `0.001`），输出目录为 `$WORK/exp/hi_xiaowen/ds_tcn_ctc_resume_<timestamp>`，与原始训练分离。传入 `init.pt` 会直接失败，避免 epoch 从 0 重新计数造成混淆。
+`scripts/02_train/resume_ctc.sh` 使用 `config/hi_xiaowen/ds_tcn_ctc_resume.yaml`（`lr: 0.0005`，低于基础配置的 `0.001`），输出目录为固定的 `$WORK/exp/hi_xiaowen/ds_tcn_ctc_resume/`，TensorBoard 写入 `$WORK/tensorboard/hi_xiaowen/ds_tcn_ctc_resume/`，与原始训练分离。传入 `init.pt` 会直接失败：`init.pt` 是 `train.py:215-217` 在 `start_epoch==0` 时保存的训练前初始化权重，并非训练产物，同名 `init.yaml` 为空会让 epoch 从 0 重新计数，容易与真正的续训混淆。
 
-**续训行为：** wekws 的 `train.py` 只加载 `model.state_dict()`，不恢复优化器、调度器和 epoch 计数，因此日志可能再次出现 `Epoch 0`；这是正常现象。学习率由 resume 配置显式降低，不需要改基础配置或上游 yaml。
+**续训行为：** wekws 的 `train.py` 只加载 `model.state_dict()`，不恢复优化器和调度器；`epoch` / `lr` / `cv_loss` 来自 checkpoint 的**同名 `.yaml`**（`train.py:175-182`）。`avg_30.pt` 没有同名 yaml，所以日志再次出现 `Epoch 0` 且 lr 为 resume config 的 `0.0005`，这是正常现象；但如果 checkpoint 带同名 yaml，其 `lr` 会覆盖 resume config 的 lr，`epoch` 也会决定起始轮次。学习率只在 yaml 中调整，不需要改基础配置或上游 yaml。
+
+### 3.6 从预置归档 checkpoint 续训
+
+`download_pretrained.sh` 取回的归档（见 §2.4）也能作为续训起点；建议先恢复产物，再从 `$EXAMPLE_EXP` 取权重：
+
+```bash
+cd /workspace/wekws-workflow
+source scripts/common/env.sh
+
+# 先恢复预置产物；默认地址已写入 config/pretrained/ds_tcn_ctc.env
+bash scripts/01_data/download_pretrained.sh
+
+# 前置：字典、数据清单与 CMVN 必须先就绪
+bash scripts/01_data/download_mobvoi.sh
+bash scripts/01_data/prepare_dict.sh
+bash scripts/01_data/prepare_mobvoi.sh
+bash scripts/01_data/regenerate_data_lists.sh
+
+# 预览命令，不启动训练
+DRY_RUN=1 bash scripts/02_train/resume_ctc.sh \
+  --checkpoint "$EXAMPLE_EXP/avg_30.pt" --gpus 0
+
+# 实际执行
+bash scripts/02_train/resume_ctc.sh \
+  --checkpoint "$EXAMPLE_EXP/avg_30.pt" --gpus 0
+```
+
+归档内 checkpoint 的差异：
+
+| 文件 | 同名 `.yaml` | 交给 `resume_ctc.sh` 的结果 |
+| :--- | :--- | :--- |
+| `avg_30.pt` | 无 | `start_epoch=0`、lr `0.0005`；推荐 |
+| `final.pt` | 无（指向 `79.pt` 的软链接） | 同 `avg_30.pt`，权重是最后一个 epoch |
+| `79.pt` | `epoch: 79`、`lr: 1.0e-06` | `start_epoch=80`；现有 resume config `max_epoch: 80` 时循环不执行 |
+| `init.pt` | `{}` | 脚本直接拒绝 |
+
+若要从 `79.pt` 之后继续，需要用 `--config` 传一份 `max_epoch` 大于 80 的新配置；并注意同名 yaml 的 `lr: 1.0e-06` 会覆盖配置 lr，可把 `79.pt` 复制成新文件名并配套同名 yaml（如 `epoch: 79`、`lr: 0.0005`）后再传 `--checkpoint`。优化器和调度器状态不会恢复。不要用 `train_ctc.sh --checkpoint <归档文件>`，它默认写 `$EXAMPLE_EXP` 且用 lr `0.001` 的基础配置，会覆盖部署产物。
 
 
 ## 四、负样本策略：决定实际可用性
@@ -249,11 +299,11 @@ Android 固定使用 `$DEPLOY_CHECKPOINT`（`avg_30.pt`），不会自动切换�
 | `average_model.py` 报 `IndexError: too many indices for array` | checkpoint/yaml 不足 30 个 | `eval_ctc.sh` 已回退到 `avg_N.pt` / `final.pt` |
 | `score_ctc.py` 报 `FileNotFoundError: data/train/global_cmvn` | 直接用了训练产物里的相对路径 config | 使用 `eval_ctc.sh` 生成的 `$RESULT_DIR/config.yaml`（绝对 CMVN 路径） |
 | `score_ctc.py` / `export_*.py` 报 `FileNotFoundError: avg_30.pt` | checkpoint 路径错误或训练失败 | 部署固定 `$DEPLOY_CHECKPOINT`；训练失败时先修训练 |
-| **续训后日志又从 `Epoch 0` 开始** | **wekws 只加载权重，不恢复 epoch 计数和优化器状态** | **正常行为；使用 `resume_ctc.sh` 的独立输出目录，学习率由 resume config 调低** |
-| **续训后 loss 突然升高** | **优化器状态未恢复** | **检查 `ds_tcn_ctc_resume.yaml` 的 `lr: 0.0005`** |
+| **续训后日志又从 `Epoch 0` 开始** | **checkpoint 没有同名 yaml（如 `avg_30.pt`）；上游只读 `state_dict` 与同名 yaml，不恢复优化器** | **正常行为；使用 `resume_ctc.sh` 的独立输出目录。传 `79.pt` 时会从 `Epoch 80` 开始，见 §3.6** |
+| **续训后 loss 突然升高** | **优化器状态未恢复；或 checkpoint 同名 yaml 的 `lr` 覆盖了 resume config** | **无同名 yaml 时检查 `ds_tcn_ctc_resume.yaml` 的 `lr: 0.0005`；有同名 yaml 时检查该 yaml 的 `lr`** |
 | **训练 loss 高但 CV loss 很低、acc 很高** | **训练集与验证集负样本比例/难度差异大** | **用第四节脚本检查 `data.list` 标签分布，不要盲目调学习率** |
 | DataLoader worker 警告 | workers 超过系统建议 | 外层 `prepare_mobvoi.sh` 已使用 8 workers |
 | 误唤醒率偏高 | 负样本分布与真实场景不匹配 | 保持负样本全量参与，必要时补充困难负样本，关注 FPPH |
 
 
-**一句话总结：** 本手册与“照着官方 README 直接跑”相比有**三个关键修正**——环境阶段**锁定 `torchaudio==2.5.1`**，确保数据准备阶段不崩；训练阶段**把 `batch_size` 从 256 降到 32/64 并开启 `expandable_segments`**，确保首轮不 OOM；续训阶段**明确只加载权重、epoch 会重记、学习率需手动调低**，避免误以为训练现场被完整恢复。做到这三步，其余从数据下载、训练到 ONNX 导出的流程与官方 `hi_xiaowen` 示例一致；第四节的负样本策略则决定模型在实际场景中是否“好用”。
+**一句话总结：** 本手册与“照着官方 README 直接跑”相比有**三个关键修正**——环境阶段**锁定 `torchaudio==2.5.1`**，确保数据准备阶段不崩；训练阶段**把 `batch_size` 从 256 降到 32/64 并开启 `expandable_segments`**，确保首轮不 OOM；续训阶段**明确只加载权重、epoch / lr 来自同名 yaml、学习率需在 yaml 中手动调低**，避免误以为训练现场被完整恢复。做到这三步，其余从数据下载、训练到 ONNX 导出的流程与官方 `hi_xiaowen` 示例一致；第四节的负样本策略则决定模型在实际场景中是否“好用”。

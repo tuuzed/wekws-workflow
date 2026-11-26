@@ -17,6 +17,7 @@
 source scripts/common/env.sh
 bash scripts/common/check_deps.sh
 bash scripts/01_data/prepare_mobvoi.sh
+bash scripts/01_data/download_pretrained.sh
 bash scripts/02_train/train_ctc.sh --checkpoint "$BASE_CHECKPOINT"
 bash scripts/02_train/resume_ctc.sh --checkpoint "$WORK/exp/hi_xiaowen/ds_tcn_ctc/avg_30.pt"
 bash scripts/04_eval/eval_ctc.sh
@@ -38,6 +39,7 @@ bash scripts/05_deploy/compare_scores.sh android/tests/data/ch0.wav
 
 ## 操作手册
 
+- [当前脚本工作流指导手册](manuals/script_workflow_guide.md)
 - [wekws + MobvoiHotwords 完整训练手册（Conda 环境）](<manuals/wekws + MobvoiHotwords 完整训练手册（Conda 环境）.md>)
 
 ## 实施计划

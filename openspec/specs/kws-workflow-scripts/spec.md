@@ -8,7 +8,12 @@
 
 ### Requirement: 每个工作流阶段都有外层入口
 
-项目 SHALL 在 `scripts/` 下提供数据准备、训练、续训、评估、通用导出、Android 导出、推理和部署验证入口；这些入口 MUST 可在不修改上游 `run_ctc.sh` 的前提下使用。
+项目 SHALL 在 `scripts/` 下提供数据准备、预置产物获取、训练、续训、评估、通用导出、Android 导出、推理和部署验证入口；这些入口 MUST 可在不修改上游 `run_ctc.sh` 的前提下使用。
+
+#### Scenario: 从外层入口获取预置产物
+
+- **WHEN** 使用者调用外层预置产物获取入口
+- **THEN** 入口从配置的默认地址或 `--url` 下载归档到 `work/downloads/pretrained/`，校验通过后落入 `work/exp/` 与 `work/eval/`，且 `wekws/` 内不新增文件
 
 #### Scenario: 从外层入口启动训练
 
@@ -51,7 +56,31 @@
 #### Scenario: 拒绝无效续训 checkpoint
 
 - **WHEN** 续训入口被要求从 `init.pt` 恢复
-- **THEN** 入口失败并拒绝启动，避免 epoch 重新计数导致日志混淆
+- **THEN** 入口失败并拒绝启动，避免把训练前初始化权重当成续训起点导致 epoch 从 0 重新计数
+
+### Requirement: 预置产物获取校验 sha256 与 checkpoint 链且不覆盖已有文件
+
+`download_pretrained.sh` SHALL 在下载后校验归档 sha256，解包后校验 epoch 链与 `avg_30.pt` sha256，再落入 `$EXAMPLE_EXP` 与 `$RESULT_DIR`；默认 MUST 不覆盖已有同名文件，仅 `--force` 允许覆盖。
+
+#### Scenario: 下载校验失败
+
+- **WHEN** 下载归档的 sha256 与 `config/pretrained/ds_tcn_ctc.env` 不一致
+- **THEN** 入口删除临时文件并失败，不替换已有归档
+
+#### Scenario: 校验 epoch 链与平均权重
+
+- **WHEN** 归档 sha256 通过并解包到暂存目录
+- **THEN** 入口确认 epoch `0..79` 连续、`avg_30.pt` sha256 匹配，且 `config.yaml`、`init.pt`、`final.pt` 与 `test_avg_30_pt/` 存在
+
+#### Scenario: 已有产物不被静默覆盖
+
+- **WHEN** 目标目录已有同名文件且与归档内容不一致
+- **THEN** 入口失败并提示 `--force`；仅显式 `--force` 时才覆盖
+
+#### Scenario: 只下载不解包
+
+- **WHEN** 调用时传入 `--download-only`
+- **THEN** 入口只下载并校验归档，不写入 `work/exp/` 或 `work/eval/`
 
 ### Requirement: 评估流程生成可复现的 FRR/FAR 结果
 

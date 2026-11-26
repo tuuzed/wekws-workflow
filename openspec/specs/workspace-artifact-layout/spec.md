@@ -48,29 +48,24 @@
 - **WHEN** 准备脚本发现待使用的 `data.list` 仍含旧上游路径
 - **THEN** 准备流程失败并提示必须重新生成 `data.list`
 
-### Requirement: 既有训练产物平稳迁移
+### Requirement: 预置训练产物归档位于 work
 
-迁移 `exp/` 与 `tensorboard/` 时 SHALL 先建立基线清单并检测写入进程；迁移 MUST 保持 checkpoint 链、config、`avg_30.pt` 和日志可解析，且在验收前可回退。
+超过 Git LFS 单文件上限的预置训练产物归档 SHALL 位于 `work/downloads/pretrained/`，其解包产物落入 `work/exp/` 与 `work/eval/`；获取流程 MUST 不写入 `wekws/`，归档本身不进 Git。
 
-#### Scenario: 检测到写入进程
+#### Scenario: 从外部归档恢复产物
 
-- **WHEN** 迁移脚本发现 `train.py` 或 `torchrun` 正在写上游 `exp/`
-- **THEN** 不直接移动在用文件，先复制到 `work/` 并校验，待写入结束后原子切换且保留旧目录
+- **WHEN** 通过外层获取入口恢复预置训练产物
+- **THEN** 归档位于 `work/downloads/pretrained/`，checkpoint 与评测产物分别落入 `work/exp/hi_xiaowen/ds_tcn_ctc/` 与 `work/eval/avg_30_pt/`，`wekws/` 内不新增任何文件
 
-#### Scenario: 无写入进程
+#### Scenario: 归档地址与校验值外置
 
-- **WHEN** 迁移脚本确认无写入进程
-- **THEN** 使用同文件系统 `mv` 原子迁移，并对比文件数、大小、sha256 与 epoch 连续性
+- **WHEN** 检查版本库中的训练产物归档
+- **THEN** `ds_tcn_ctc.tar.gz` 不出现在 Git 跟踪文件中，默认地址与 sha256 由 `config/pretrained/ds_tcn_ctc.env` 记录
 
-#### Scenario: checkpoint 链保持完整
+#### Scenario: 校验失败不改写已有产物
 
-- **WHEN** 迁移完成
-- **THEN** `work/exp/hi_xiaowen/ds_tcn_ctc/` 保留全部 epoch `.pt`/`.yaml`、`config.yaml` 与 `avg_30.pt`，tensorboard 日志可读，且 `avg_30.pt` 基线不变
-
-#### Scenario: 校验失败可回退
-
-- **WHEN** 迁移后校验发现文件数、sha256 或 epoch 链不一致
-- **THEN** 从保留的旧目录恢复，并停止后续清理步骤
+- **WHEN** 归档或 epoch 链校验失败
+- **THEN** 流程停止，已有 `work/exp/` 与 `work/eval/` 产物保持不变
 
 ### Requirement: 评测中间产物与报告有固定归属
 
@@ -98,4 +93,4 @@ FRR/FAR 评测产物 SHALL 分为两类：`score.txt`、`stats/*.txt` 与 `det.p
 #### Scenario: 下载资源位置错误
 
 - **WHEN** `mobvoi_kws_transcription` 仍位于 `wekws/examples/hi_xiaowen/s0/`
-- **THEN** 校验流程报告未满足只读约束，迁移不能标记为完成
+- **THEN** 校验流程报告未满足只读约束并失败，提示将资源放回 `work/downloads/`

@@ -240,8 +240,10 @@ max diff: 约 2.5e-5
 导出脚本：
 
 ```text
-android/export/export_ctc_onnx.py
+scripts/03_export/export_android_onnx.py
 ```
+
+`android/export/export_ctc_onnx.py` 仅保留为兼容 wrapper，不作为推荐入口。
 
 动态轴：
 
@@ -706,9 +708,10 @@ stereo.wav    channel 0 命中，channel 1 无事件
 1. 已用 `avg_30.pt` 重新导出 Android ONNX：
 
    ```bash
-   cd /workspace/wekws-workflow/android
-   /root/miniconda/envs/wekws/bin/python export/export_ctc_onnx.py \
-     --checkpoint /workspace/wekws-workflow/wekws/examples/hi_xiaowen/s0/exp/ds_tcn_ctc/avg_30.pt \
+   cd /workspace/wekws-workflow
+   source scripts/common/env.sh
+   "$PYTHON_BIN" scripts/03_export/export_android_onnx.py \
+     --checkpoint "$DEPLOY_CHECKPOINT" \
      --keyword_thresholds '嗨小问=0.303,你好问问=0.039'
    ```
 

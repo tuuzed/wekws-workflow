@@ -21,6 +21,7 @@
 - Native host 校验：`bash scripts/05_deploy/build_android_host.sh`，然后 `bash scripts/05_deploy/compare_scores.sh android/tests/data/ch0.wav`。`run_compare.sh` / `compare_scores.sh` 的 `CHECKPOINT` 默认已是 `work/exp/hi_xiaowen/ds_tcn_ctc/avg_30.pt`，仍可由环境变量覆盖。
 - 当前环境没有 Android SDK，`scripts/05_deploy/build_apk.sh` 会明确失败，不会伪装成功。
 - 外层入口统一由 `scripts/common/env.sh` 提供路径与 Python 环境（`source scripts/common/env.sh`）。上游 recipe 只有在直接调用其工具时才需在 recipe 目录下 `source path.sh`；训练/评估/导出/推理均走外层 `scripts/` 入口，不再推荐修改上游 `run_ctc.sh`。
+- 预置训练产物归档不进 Git（平台 LFS 单文件上限 100MB）：`bash scripts/01_data/download_pretrained.sh`。默认下载地址写在 `config/pretrained/ds_tcn_ctc.env` 的 `PRETRAINED_URL`（ModelScope `tuuzed/wekws-mobvoi-ds-tcn-ctc-80ep-pretrained`），可用 `--url` 覆盖；归档下载到 `$PRETRAINED_DIR`=`work/downloads/pretrained/`，校验 sha256 与 epoch 链后落入 `$EXAMPLE_EXP` 和 `$RESULT_DIR`，默认不覆盖已有文件（`--force` 才覆盖），不写 `wekws/`。
 
 ## 文档注意
 - `android/README.md` 中 `15.pt` / "联调 ONNX" 仅作为历史记录保留；当前部署资产以导出脚本、assets/config.json 和 `tests/` 输出为准。旧 `kws.onnx` 与 `avg_30.pt` posterior 差约 `0.008`，已重导出，当前对齐 score 为 `0.783478 / 0.224239`。
