@@ -1,0 +1,10 @@
+.gradle/
+build/
+build_host/
+tests/out/
+third_party/onnxruntime/include/
+third_party/onnxruntime/lib/
+local.properties
+*.iml
+.idea/
+.DS_Store

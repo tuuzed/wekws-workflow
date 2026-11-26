@@ -1,0 +1,72 @@
+{
+  "model_path": "kws.onnx",
+  "model_type": "ctc",
+  "sample_rate": 16000,
+  "feature_dim": 40,
+  "frame_length_ms": 25,
+  "frame_shift_ms": 10,
+  "hidden_dim": 256,
+  "cache_len": 105,
+  "vocab_size": 2599,
+  "blank_id": 0,
+  "keywords": [
+    {
+      "text": "嗨小问",
+      "chars": [
+        "嗨",
+        "小",
+        "问"
+      ],
+      "tokens": [
+        1302,
+        1462,
+        2494
+      ],
+      "trigger_threshold": 0.303
+    },
+    {
+      "text": "你好问问",
+      "chars": [
+        "你",
+        "好",
+        "问",
+        "问"
+      ],
+      "tokens": [
+        1027,
+        1401,
+        2494,
+        2494
+      ],
+      "trigger_threshold": 0.039
+    }
+  ],
+  "keywords_token_set": [
+    0,
+    1027,
+    1302,
+    1401,
+    1462,
+    2494
+  ],
+  "ctc": {
+    "score_beam_size": 3,
+    "path_beam_size": 20,
+    "prob_threshold": 0.05,
+    "isclose_abs_tol": 1e-06,
+    "cooldown_ms": 1000,
+    "reset_decoder_after_trigger": true,
+    "reset_cache_after_trigger": false
+  },
+  "runtime": {
+    "default_channels": 2,
+    "chunk_frames": 80,
+    "intra_op_threads": 1,
+    "inter_op_threads": 1
+  },
+  "debug": {
+    "dump_frame_topk": false,
+    "frame_topk_size": 3,
+    "max_debug_frames": 2000
+  }
+}

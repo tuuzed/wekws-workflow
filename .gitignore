@@ -1,0 +1,22 @@
+# 所有项目运行产物
+work/
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Android 构建产物
+android/.gradle/
+android/app/build/
+android/build_host/
+android/local.properties
+android/third_party/onnxruntime/
+
+# 推理输出
+infer_cli/
+*.onnx
+# Android 部署模型必须随工程提交
+!android/app/src/main/assets/kws.onnx
+
+# 系统文件
+.DS_Store
