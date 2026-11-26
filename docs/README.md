@@ -9,6 +9,22 @@
 | 操作手册 | `manuals/` | 环境与训练流程等可照着执行的手册 |
 | 实施计划 | `plans/` | 迁移、整理和阶段性执行计划 |
 
+## 常用入口
+
+所有命令从仓库根目录执行，路径与环境由 `scripts/common/env.sh` 统一提供：
+
+```bash
+source scripts/common/env.sh
+bash scripts/common/check_deps.sh
+bash scripts/01_data/prepare_mobvoi.sh
+bash scripts/02_train/train_ctc.sh --checkpoint "$BASE_CHECKPOINT"
+bash scripts/02_train/resume_ctc.sh --checkpoint "$WORK/exp/hi_xiaowen/ds_tcn_ctc/avg_30.pt"
+bash scripts/04_eval/eval_ctc.sh
+$PYTHON_BIN scripts/03_export/export_android_onnx.py --keyword_thresholds '嗨小问=0.303,你好问问=0.039'
+bash scripts/05_deploy/build_android_host.sh
+bash scripts/05_deploy/compare_scores.sh android/tests/data/ch0.wav
+```
+
 ## 架构与设计
 
 - [Android 端多路 KWS-CTC 部署架构设计与实现](architecture/android_deployment_architecture.md)
@@ -18,6 +34,7 @@
 ## 评测
 
 - [avg_30.pt FRR/FAR 评测操作手册](evaluation/avg30_frr_far_evaluation.md)
+- [avg_30.pt FRR/FAR 评测结果](evaluation/avg30_frr_far_report.md)
 
 ## 操作手册
 

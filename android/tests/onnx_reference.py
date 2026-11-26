@@ -17,6 +17,7 @@ import yaml
 
 ANDROID_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = ANDROID_ROOT.parent / "wekws"
+WORK_ROOT = ANDROID_ROOT.parent / "work"
 sys.path.insert(0, str(ANDROID_ROOT.parent))
 sys.path.insert(0, str(ANDROID_ROOT))
 sys.path.insert(0, str(REPO_ROOT))
@@ -71,7 +72,7 @@ def get_args():
     parser.add_argument("--config_json",
                         default=str(ANDROID_ROOT / "app/src/main/assets/config.json"))
     parser.add_argument("--train_config",
-                        default=str(REPO_ROOT / "examples/hi_xiaowen/s0/exp/ds_tcn_ctc/config.yaml"))
+                        default=str(WORK_ROOT / "exp/hi_xiaowen/ds_tcn_ctc/config.yaml"))
     parser.add_argument("--checkpoint", default=None)
     parser.add_argument("--out_dir", default=str(ANDROID_ROOT / "tests/out"))
     return parser.parse_args()
@@ -86,6 +87,8 @@ def resolve_cmvn(config_path, cmvn):
         config_path.parent.parent.parent / raw,
         config_path.parent.parent / raw,
         config_path.parent / raw,
+        WORK_ROOT / "data/hi_xiaowen" / Path(raw).name,
+        WORK_ROOT / "data/hi_xiaowen/train/global_cmvn",
         REPO_ROOT / raw,
     ]:
         if candidate.exists():

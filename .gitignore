@@ -18,5 +18,8 @@ infer_cli/
 # Android 部署模型必须随工程提交
 !android/app/src/main/assets/kws.onnx
 
+# 迁移回滚备份（Phase 5 最终验收后删除）
+wekws.old/
+
 # 系统文件
 .DS_Store

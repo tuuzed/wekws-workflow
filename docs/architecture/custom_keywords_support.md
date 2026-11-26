@@ -121,16 +121,21 @@ keyword: [1027, 1401, 2494, 2494]
 导出脚本：
 
 ```text
-android/export/export_ctc_onnx.py
+scripts/03_export/export_android_onnx.py
 ```
+
+（`android/export/export_ctc_onnx.py` 仅保留兼容 wrapper。）
 
 支持：
 
 ```bash
-python export/export_ctc_onnx.py \
-  --checkpoint /workspace/wekws-my/wekws/examples/hi_xiaowen/s0/exp/ds_tcn_ctc/15.pt \
-  --keywords "嗨小问,你好问问,自定义词"
+cd /workspace/wekws-my
+/root/miniconda/envs/wekws/bin/python scripts/03_export/export_android_onnx.py \
+  --keywords "嗨小问,你好问问,自定义词" \
+  --keyword_thresholds '嗨小问=0.303,你好问问=0.039,自定义词=0.3'
 ```
+
+默认 checkpoint 为 `work/exp/hi_xiaowen/ds_tcn_ctc/avg_30.pt`；部署关键词必须提供 `--keyword_thresholds`。
 
 它会：
 

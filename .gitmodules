@@ -1,0 +1,3 @@
+[submodule "wekws"]
+	path = wekws
+	url = https://github.com/wenet-e2e/wekws.git

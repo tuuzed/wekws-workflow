@@ -4,7 +4,7 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 BUILD="$ROOT/build_host"
 WAV="${1:-$ROOT/tests/data/ch0.wav}"
-CHECKPOINT="${CHECKPOINT:-$ROOT/../wekws/examples/hi_xiaowen/s0/exp/ds_tcn_ctc/15.pt}"
+CHECKPOINT="${CHECKPOINT:-$ROOT/../work/exp/hi_xiaowen/ds_tcn_ctc/avg_30.pt}"
 
 if [[ -z "${PYTHON_BIN:-}" ]]; then
     if command -v python3 >/dev/null 2>&1; then

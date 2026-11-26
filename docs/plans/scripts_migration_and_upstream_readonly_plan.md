@@ -1,10 +1,10 @@
 # 脚本归置与 wekws 上游只读迁移计划
 
-> 状态：执行中 / Phase 0-1 部分完成  
+> 状态：Phase 0–5 已实施并通过验收；OpenSpec change `scripts-migration-and-upstream-readonly` 已同步 4 份 main specs 并归档至 `openspec/changes/archive/2026-11-26-scripts-migration-and-upstream-readonly`；外层仓库改动（含 `script-workflow-guide` 文档）待统一评审提交。
 > 日期：2026-11-25  
 > 更新日期：2026-11-26  
-> 参考手册：`docs/manuals/wekws + MobvoiHotwords 完整训练手册（Conda 环境）.md`  
-> 注意：参考手册中 `export_onnx.py --output_dir` 与实际代码不一致，本计划已按实际代码修正为 `--onnx_model`。
+> 参考手册：`docs/manuals/wekws + MobvoiHotwords 完整训练手册（Conda 环境）.md`、`docs/evaluation/avg30_frr_far_evaluation.md`
+> 注意：参考手册中 `export_onnx.py --output_dir` 与实际代码不一致，本计划已按实际代码修正为 `--onnx_model`。当前仓库状态与旧描述冲突时，以脚本、assets 和 OpenSpec 产物为准。
 
 ---
 
@@ -20,7 +20,7 @@
 
 - 不修改 `wekws` 的源码、脚本、配置；
 - 不在 `wekws/` 目录内产生 `data/`、`dict/`、`exp/`、`tensorboard/`、`mobvoi_kws_transcription/`、`__pycache__/` 等任何项目落地文件；
-- 外层 `/workspace/wekws-my` 新建独立 git 仓库；
+- 外层 `/workspace/wekws-my` 已建立独立 git 并完成首次提交 `81c82f2`；
 - `wekws` 通过 git submodule 引入并 pin 到指定 commit；
 - 迁移验证无误后，恢复 `wekws` 当前已有的两处上游修改。
 
@@ -36,14 +36,15 @@
 | 4 | 通用导出和 Android 导出都保留 | 同时保留 `wekws/bin/export_onnx.py` / `export_jit.py` 链路和 Android 动态 batch ONNX 导出 |
 | 5 | `mobvoi_kws_transcription` 由脚本下载 | 保存完整下载仓库，不手工把 `23.pt` 拷贝到 `models/base/` |
 | 6 | 当前 2599 维 checkpoint 方案下，dict 生成是必需步骤 | 必须从 `mobvoi_kws_transcription/tokens.txt` 生成，不能只生成三行简化 dict |
+| 7 | FRR/FAR 评测按 `docs/evaluation/avg30_frr_far_evaluation.md` 完整保留 | 迁移后仍保留 `avg_30.pt`、`score.txt`、`stats/*.txt`、`det.png`、阈值选点流程和保守工作点 `0.303 / 0.039` |
 
 ---
 
 ## 3. 当前状态盘点
 
-### 3.1 `wekws` 仓库状态
+### 3.1 `wekws` 仓库状态（迁移前快照）
 
-当前观察到：
+迁移前观察到：
 
 ```text
  M examples/hi_xiaowen/s0/conf/ds_tcn_ctc.yaml
@@ -83,8 +84,13 @@ examples/hi_xiaowen/s0/tensorboard                12K
 /workspace/wekws-my/
 ├── .git/
 ├── .gitignore
+├── AGENTS.md
 ├── android/
-│   └── app/src/main/assets/id_to_token.json
+│   └── app/src/main/assets/
+│       ├── config.json
+│       ├── id_to_token.json
+│       ├── keywords.txt
+│       └── kws.onnx
 ├── docs/
 │   ├── README.md
 │   ├── architecture/
@@ -100,11 +106,13 @@ examples/hi_xiaowen/s0/tensorboard                12K
 ├── infer_cli.py
 ├── infer_core.py
 ├── infer_webui.py
+├── openspec/
+│   └── changes/scripts-migration-and-upstream-readonly/
 ├── requirements.txt
 └── wekws/
 ```
 
-当前 `/workspace/wekws-my` 已初始化独立 git 仓库，但尚未提交；`.gitignore` 已创建，`requirements.txt` 已锁定 `torch==2.5.1` / `torchaudio==2.5.1`。`scripts/`、`work/`、`config/` 尚未创建。`wekws` 仍是普通目录，当前 commit 为 `6a45aeb994dd81c0969ff877a5a7c46d60ed0c86`，保留两处修改和未跟踪的 `mobvoi_kws_transcription/`。
+迁移前基线（2026-11-25）：`/workspace/wekws-my` 已完成首次提交 `81c82f2`；`.gitignore` 已包含 `!android/app/src/main/assets/kws.onnx`，部署模型已入库，`requirements.txt` 已锁定 `torch==2.5.1` / `torchaudio==2.5.1`。当时 `AGENTS.md` 与 `openspec/changes/scripts-migration-and-upstream-readonly/` 已创建但尚未提交，`scripts/`、`work/`、`config/` 尚未创建。当前这些外层结构均已建立；当时 `wekws` 仍为普通目录，commit `6a45aeb994dd81c0969ff877a5a7c46d60ed0c86`，两处本地修改和 `mobvoi_kws_transcription/` 尚在其中。当前 `wekws` 已转为 pin 在同一 commit 的 submodule，两处修改已恢复且下载物已迁出。
 
 ---
 
@@ -115,6 +123,7 @@ examples/hi_xiaowen/s0/tensorboard                12K
 ├── .git/
 ├── .gitmodules                              # wekws submodule 配置
 ├── .gitignore
+├── AGENTS.md                                # 仓库级操作约束
 ├── config/
 │   └── hi_xiaowen/
 │       ├── ds_tcn_ctc.yaml                  # 上游 yaml 副本，batch_size=64
@@ -153,11 +162,13 @@ examples/hi_xiaowen/s0/tensorboard                12K
 │   │   └── test/
 │   ├── dict/hi_xiaowen/
 │   ├── tensorboard/hi_xiaowen/ds_tcn_ctc/
+│   ├── eval/                                # score.txt / stats / det.png
 │   ├── exports/hi_xiaowen/
 │   └── exp/hi_xiaowen/ds_tcn_ctc/
 ├── android/
 ├── docs/
 ├── infer_core.py                            # 公共库，保留根目录，供 CLI/WebUI/脚本复用
+├── openspec/                                # OpenSpec change 与将来同步后的 specs
 ├── requirements.txt                         # 锁定 torch/torchaudio 2.5.1
 └── wekws/                                   # git submodule，只读
 ```
@@ -170,6 +181,7 @@ examples/hi_xiaowen/s0/tensorboard                12K
   work/downloads/mobvoi_kws_transcription/23.pt
   ```
 - `models/` 不再是必要目录。
+- `android/app/src/main/assets/kws.onnx` 已随首次提交入库；迁移时只在模型或阈值变更时按固定工作点重新导出。
 
 ---
 
@@ -177,9 +189,9 @@ examples/hi_xiaowen/s0/tensorboard                12K
 
 ### 5.1 外层仓库初始化
 
-已完成：`/workspace/wekws-my` 已创建独立 git 仓库和 `.gitignore`，后续只需核对覆盖范围并提交。
+已完成：`/workspace/wekws-my` 已创建独立 git 仓库并完成首次提交 `81c82f2`。后续迁移在此仓库内继续，先不提交 `wekws/`。
 
-建议 `.gitignore`（当前已落地）：
+当前 `.gitignore`（已落地）：
 
 ```gitignore
 # 所有项目运行产物
@@ -199,6 +211,8 @@ android/third_party/onnxruntime/
 # 推理输出
 infer_cli/
 *.onnx
+# Android 部署模型必须随工程提交
+!android/app/src/main/assets/kws.onnx
 
 # 系统文件
 .DS_Store
@@ -208,12 +222,13 @@ infer_cli/
 
 - `android/app/src/main/assets/config.json`、`keywords.txt` 纳入 git；
 - `android/app/src/main/assets/id_to_token.json` 是文本调试资产，纳入 git；
-- `android/app/src/main/assets/kws.onnx` 是二进制部署产物，默认忽略，由导出脚本生成；
-- 新 clone 后 Android 工程不会自带 ONNX，必须先执行：
+- `android/app/src/main/assets/kws.onnx` 通过 `.gitignore` 例外显式纳入 git，已随首次提交入库；
+- 新 clone 后 Android 工程自带 `kws.onnx`；只有在模型或阈值变更时才重新导出：
   ```bash
-  python scripts/03_export/export_android_onnx.py --checkpoint <部署 checkpoint>
+  python scripts/03_export/export_android_onnx.py \
+    --checkpoint "$WORK/exp/hi_xiaowen/ds_tcn_ctc/avg_30.pt" \
+    --keyword_thresholds '嗨小问=0.303,你好问问=0.039'
   ```
-  才能构建可运行 APK。
 
 ### 5.2 `wekws` submodule 转换方案
 
@@ -225,7 +240,7 @@ infer_cli/
 6a45aeb994dd81c0969ff877a5a7c46d60ed0c86
 ```
 
-当前 diff/备份尚未生成；`wekws` 内仍有两处修改和未跟踪的 `mobvoi_kws_transcription/`。
+迁移前 diff 已备份到 `docs/plans/backups/wekws_local_changes.diff`；两处本地修改已在转换前恢复，`mobvoi_kws_transcription/` 已迁到 `work/downloads/`。
 
 步骤：
 
@@ -419,9 +434,11 @@ torchrun --standalone --nnodes=1 --nproc_per_node="$NUM_GPUS" \
 
 ### 6.4 评估
 
-`eval_ctc.sh` 对应手册 stage 3，调用上游：
+`eval_ctc.sh` 对应手册 stage 3，并以 `docs/evaluation/avg30_frr_far_evaluation.md` 为完整操作依据。迁移后所有路径改为 `$WORK`；命令形态如下：
 
 ```bash
+mkdir -p "$RESULT_DIR/stats"
+
 python "$WEKWS_ROOT/wekws/bin/average_model.py" \
   --dst_model "$EXAMPLE_EXP/avg_30.pt" \
   --src_path "$EXAMPLE_EXP" \
@@ -454,9 +471,12 @@ python "$WEKWS_ROOT/wekws/bin/compute_det_ctc.py" \
 
 - `score_ctc.py` / `compute_det_ctc.py` 会对 `--keywords` 做 `encode('utf-8').decode('unicode_escape')`，因此必须传 ASCII 转义，不能传中文字面量；
 - 两者都必须显式传 `--dict`；
+- `score_ctc.py` 没有 `--cmvn_file` 参数，`$EXAMPLE_EXP/config.yaml` 中 `cmvn_file` 仍是相对路径。迁移后 `eval_ctc.sh` MUST 生成解析后的评测 config（把 `cmvn.cmvn_file` 写成 `$EXAMPLE_DATA/train/global_cmvn` 绝对路径），或固定一个能让该相对路径解析的 cwd；禁止依赖旧 recipe 目录作为隐式 cwd；
+- `score_file` 只写 3 位小数，DET 阈值步长保持 `--step 0.001`；`--window_shift 50` 按评测手册保留；
+- `SCORE_BATCH_SIZE` 独占 GPU 可用 64；与训练共用 GPU 时建议 16/32；
 - 输出目录：
   ```text
-  $RESULT_DIR=$EXAMPLE_EXP/test_avg_30.pt
+  $RESULT_DIR=$EXAMPLE_EXP/test_avg_30_pt
   ```
 
 #### average fallback
@@ -473,7 +493,20 @@ assert num == len(path_list)
 - 若 < 30：使用实际 N 生成 `avg_N.pt`，或直接用 `final.pt`；
 - 不把“缺少 30 个 checkpoint”误判为训练失败。
 
-FRR / FAR 评测已完成，工作点按 `FAR ≤ 0.2/h` 选定为独立阈值 `嗨小问=0.303`、`你好问问=0.039`，依据见 `docs/evaluation/avg30_frr_far_evaluation.md`。阈值通过导出脚本参数写入：
+FRR / FAR 评测已完成，工作点按 `FAR ≤ 0.2/h` 选定为独立阈值 `嗨小问=0.303`、`你好问问=0.039`，依据见 `docs/evaluation/avg30_frr_far_evaluation.md`。迁移后该手册的完整流程必须保留，不得只搬命令：
+
+1. `compute_det_ctc.py` 生成 `$RESULT_DIR/stats/stats.嗨_小_问.txt`、`stats.你_好_问_问.txt` 与 `det.png`；stats 三列为 `threshold / false_alarm_per_hour / FRR`。
+2. 按 FAR 约束逐关键词独立选点：
+
+   ```bash
+   awk '$2 <= 0.2 {print; exit}' "$RESULT_DIR/stats/stats.嗨_小_问.txt"
+   awk '$2 <= 0.2 {print; exit}' "$RESULT_DIR/stats/stats.你_好_问_问.txt"
+   ```
+
+3. 当前 `score.txt` 复算的理论最低点为 `嗨小问=0.293`、`你好问问=0.038`；历史记录中的 `0.297 / 0.000` 仅作追溯。部署实际采用留余量的保守工作点 `嗨小问=0.303`、`你好问问=0.039`，当前 stats 对应 FAR 分别 `0.174880` / `0.189813`、FRR `4.0598%` / `3.2986%`。
+4. 结果记录到 `docs/evaluation/avg30_frr_far_report.md`，并保留 selected epochs、test wav 数量、负样本总时长和 `det.png` 路径。
+
+阈值通过导出脚本参数写入：
 
 ```bash
 --keyword_thresholds '嗨小问=0.303,你好问问=0.039'
@@ -599,13 +632,13 @@ EXP_DIR = WORK / "exp" / "hi_xiaowen" / "ds_tcn_ctc"
 
 必须修正以下默认值，否则仍会读取上游目录：
 
-| 文件 | 当前默认值 | 修正后 |
+| 文件 | 迁移前默认值 | 当前状态 |
 |---|---|---|
 | `android/tests/run_compare.sh` | `$ROOT/../wekws/examples/.../15.pt` | `$WORK/exp/hi_xiaowen/ds_tcn_ctc/avg_30.pt`，可由 `CHECKPOINT` 覆盖 |
 | `android/export/export_ctc_onnx.py` | 上游 `15.pt` | `$WORK/exp/hi_xiaowen/ds_tcn_ctc/avg_30.pt`，可由 `--checkpoint` 覆盖 |
-| `android/export/export_ctc_onnx.py` | 无 `--keyword_thresholds` 参数 | 必填参数，写入 `keywords[].trigger_threshold` |
-| `android/app/src/main/assets/config.json` | 当前仍是旧工作点 | 迁移后写入 `嗨小问=0.303`、`你好问问=0.039`，并在导出后校验 |
-| `docs/*.md`、`android/README.md` | 旧 `run_ctc.sh` / 上游 exp 路径 | 新 `scripts/` 命令和 `$WORK` 路径 |
+| `android/export/export_ctc_onnx.py` | 已改为必填 `--keyword_thresholds` | 迁移到 `scripts/03_export/export_android_onnx.py` 后保持必填 |
+| `android/app/src/main/assets/config.json` | 已是 `0.303 / 0.039` | 迁移后校验不被覆盖，且不含 `ctc.trigger_threshold` |
+| `docs/*.md`、`android/README.md`、`docs/evaluation/avg30_frr_far_evaluation.md` | 旧 `run_ctc.sh` / 上游 exp 路径 | 新 `scripts/` 命令和 `$WORK` 路径，保留 CMVN/cwd 说明 |
 
 部署脚本：
 
@@ -659,7 +692,7 @@ EXP_DIR = WORK / "exp" / "hi_xiaowen" / "ds_tcn_ctc"
 5. Android 导出脚本迁移与默认值修正。
 6. `infer_core.py` 路径常量修正；CLI/WebUI 迁移与 wrapper。
 7. 部署验证脚本默认值修正。
-8. 文档路径更新。
+8. 文档路径更新，必须包含 `docs/evaluation/avg30_frr_far_evaluation.md` 的 `scripts/` / `$WORK` 路径和 CMVN/cwd 说明，以及 `android/README.md` 的旧 `15.pt` / “联调 ONNX” 清理。
 
 ### Phase 4：等价验证
 
@@ -671,7 +704,7 @@ EXP_DIR = WORK / "exp" / "hi_xiaowen" / "ds_tcn_ctc"
 4. `data.list` 中 wav 路径全部位于 `$WORK`；
 5. `train_ctc.sh` 能正常启动训练，产物写 `$EXAMPLE_EXP`，tensorboard 写 `$EXAMPLE_TB`；
 6. `resume_ctc.sh` 使用 resume config，`lr` 已调低，输出独立目录；
-7. `eval_ctc.sh` 能产出 `avg_N.pt` / `final.pt` 和 FRR/FAR；
+7. `eval_ctc.sh` 能产出 `avg_N.pt` / `final.pt` 和 FRR/FAR，并复现 `avg_30.pt` 的 `0.303 / 0.039` 工作点；
 8. `export_onnx.sh` 能用 `--onnx_model` 导出通用 ONNX；
 9. `export_jit.sh` 能用 `--jit_model` 导出 JIT；
 10. `export_android_onnx.py` 能导出动态 batch `kws.onnx`；
@@ -682,7 +715,12 @@ EXP_DIR = WORK / "exp" / "hi_xiaowen" / "ds_tcn_ctc"
 15. `--dump_frame_topk` / `frameDebug()` 的 token id 与 ORT 参考一致，默认关闭时输出为空；
 16. `id_to_token.json` 能正确映射 `1302/1462/2494` 等关键词 token；
 17. 用 `avg_30.pt` 导出后，`android/app/src/main/assets/config.json` 的 `keywords[].trigger_threshold` 为 `嗨小问=0.303`、`你好问问=0.039`，且不含 `ctc.trigger_threshold`；
-18. `--score_file` 原格式保持不变，不影响 DET 评测。
+18. `--score_file` 原格式保持不变，不影响 DET 评测；
+19. `score.txt` 保留 3 位小数，DET 使用 `--step 0.001`，`stats.嗨_小_问.txt`、`stats.你_好_问_问.txt` 与 `det.png` 落在 `$RESULT_DIR/stats`；
+20. 按 `awk '$2 <= 0.2 {print; exit}'` 在当前 `score.txt` 上复算得到 `0.293 / 0.038`，报告同时保留历史理论点 `0.297 / 0.000`，部署实际采用留余量工作点 `0.303 / 0.039`，并记录到 `docs/evaluation/avg30_frr_far_report.md`；
+21. `docs/evaluation/avg30_frr_far_evaluation.md` 已改为迁移后命令入口，仍明确说明 `score_ctc.py` 的 CMVN 相对路径约束。
+
+执行边界说明：经确认，`work/exp/hi_xiaowen/ds_tcn_ctc/` 已完成完整 80 epoch GPU 训练（`0.pt`–`79.pt` 共 80 个 checkpoint、对应 yaml 与 TensorBoard 事件齐全，`avg_30.pt` 已生成）；迁移验收另以 `/tmp` 输出做了限时启动冒烟复测，未改动已训练产物。FRR/FAR 基于现有 `avg_30.pt` 的 `score.txt` 完整重算了 `compute_det_ctc.py`。Android APK 构建因本机无 SDK 未执行，`build_apk.sh` 会明确报错。
 
 ### Phase 5：恢复上游并转 submodule
 
@@ -698,6 +736,15 @@ EXP_DIR = WORK / "exp" / "hi_xiaowen" / "ds_tcn_ctc"
 3. 确认 `git -C wekws status --short` 为空。
 4. 按 5.2 的方案把 `wekws` 转为 submodule 并 pin commit。
 5. 最终验收后再删除 `wekws.old`。
+
+实施结果：两处本地修改已在转换前按 `docs/plans/backups/wekws_local_changes.diff` 恢复；旧检出改名为 `wekws.old` 保留回滚能力，重新 `git submodule add` 并 pin 到 `6a45aeb994dd81c0969ff877a5a7c46d60ed0c86`。新 submodule 中 `data/`、`dict/`、`exp/`、`tensorboard/`、`__pycache__/` 均不存在，`git -C wekws status --short` 为空。切换后重跑 CLI、通用 ONNX/JIT 导出、Native host 对齐均通过；另修复了 `android/tests/onnx_reference.py` 默认仍指向上游 `exp/config.yaml` 的遗留路径。
+
+基线快照（原 `docs/plans/backups/` 临时文件已精简，必要信息并入此处）：
+
+- 上游 pin commit `6a45aeb994dd81c0969ff877a5a7c46d60ed0c86`；迁移前两处本地修改仅保存在 `docs/plans/backups/wekws_local_changes.diff`。
+- 迁移前上游产物规模：`data/` 29G / 286,675 文件，`dict/` 28K / 2，`exp/` 304M / 168，`tensorboard/` 20K / 4，`mobvoi_kws_transcription/` 71M / 38；epoch 序列 `0..79`（共 80 个）。
+- `avg_30.pt` sha256 `fa02f745cb48fdb961893981e5bd7e8836738e47569ea7997a723ed09e12149c`。
+- 重导出后部署资产 sha256：`kws.onnx` `cbfc65e0e869307b7cec935354920674b51cb13ed87a9f0e91ddcabf2f206cdd`、`config.json` `de108ef37258e6abd2f77356d8ac740e25aaa4d35fda946c3da71f7e3e34a115`、`id_to_token.json` `b94abbc860a985a10232d85abeb284348a1653c66e95a906743bae60aad2be57`、`keywords.txt` `e422df74b6aba85fb4ae85c7ac8107d3128ba80c309c2c0761a483c235f56720`；阈值 per-keyword `嗨小问=0.303` / `你好问问=0.039`，无全局 `ctc.trigger_threshold`。旧 `kws.onnx` `4e53fd922741b8f0ef4452c38cc6375d343c1fa3083c98733ffaeafbac0b37e2` 与 `avg_30.pt` posterior 差约 `0.008`，已按固定命令重导出替换。
 
 ---
 
@@ -715,6 +762,8 @@ EXP_DIR = WORK / "exp" / "hi_xiaowen" / "ds_tcn_ctc"
 | `torchaudio` 版本错误 | `requirements.txt` 锁 2.5.1，env 检查 `torchaudio.info` |
 | 续训日志混淆 | `resume_ctc.sh` 使用独立模型目录和 resume config |
 | `score_ctc.py` keywords 乱码 | 传 ASCII unicode escape，不传中文字面量 |
+| `score_ctc.py` CMVN 相对路径导致评测失败 | `eval_ctc.sh` 生成绝对路径 config 或固定可解析 cwd，禁止依赖旧 recipe 目录 |
+| FRR/FAR 阈值流程被跳过 | 按评测手册保留 `awk '$2 <= 0.2 {print; exit}'`、`--step 0.001`、保守工作点 `0.303 / 0.039` 和报告模板 |
 | ONNX 导出参数错误 | 使用 `--onnx_model`，不是手册中的 `--output_dir` |
 | 误唤醒阈值未校准 | FRR/FAR 已完成，按 `FAR ≤ 0.2/h` 独立阈值定为 `嗨小问=0.303`、`你好问问=0.039`，依据见 `docs/evaluation/avg30_frr_far_evaluation.md` |
 | 导出脚本覆盖阈值 | `--keyword_thresholds` 为必填参数，写入 per-keyword 阈值，并加入 Phase 4 验证 |
@@ -740,7 +789,10 @@ EXP_DIR = WORK / "exp" / "hi_xiaowen" / "ds_tcn_ctc"
 11. Android ONNX 由 `avg_30.pt` 导出，`id_to_token.json` 已生成并纳入 git；
 12. `android/app/src/main/assets/config.json` 的 `keywords[].trigger_threshold` 为 `嗨小问=0.303`、`你好问问=0.039`，且不含 `ctc.trigger_threshold`；
 13. CLI / WebUI / Android 均可输出 `token_probs`，且 score 公式未变；
-14. 逐帧 top-k 默认关闭，开启后与 ORT 参考 token id 一致。
+14. 逐帧 top-k 默认关闭，开启后与 ORT 参考 token id 一致；
+15. `docs/evaluation/avg30_frr_far_evaluation.md` 已更新为 `scripts/` / `$WORK` 路径，并保留 CMVN/cwd 约束；
+16. FRR/FAR 流程可复现：`avg_30.pt`、`score.txt`（3 位小数）、stats/det.png、`awk` 选点、最终保守工作点 `0.303 / 0.039`；
+17. OpenSpec change `scripts-migration-and-upstream-readonly` 的 tasks 与本文档一致，实施前无未解决冲突。
 
 ---
 

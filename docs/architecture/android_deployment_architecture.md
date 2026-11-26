@@ -666,13 +666,13 @@ ch1.wav       无事件
 stereo.wav    channel 0 命中，channel 1 无事件
 ```
 
-当前 `assets/kws.onnx` 已用 `avg_30.pt` 导出，观察到的 Native streaming 结果为：
+当前 `assets/kws.onnx` 已用 `avg_30.pt` 重新导出，观察到的 Native streaming 结果为：
 
 ```text
-ch0.wav       嗨小问   score=0.787618  start=69  end=129
-              token_probs = [嗨=0.986174@69, 小=0.997586@109, 问=0.630562@129]
-ch_nihao.wav  你好问问 score=0.223723  start=63  end=125
-              token_probs = [你=0.954047@63, 好=0.988384@85, 问=0.994280@108, 问=0.053385@125]
+ch0.wav       嗨小问   score=0.783478  start=69  end=129
+              token_probs = [嗨=0.986322@69, 小=0.997568@109, 问=0.623867@129]
+ch_nihao.wav  你好问问 score=0.224239  start=63  end=125
+              token_probs = [你=0.953913@63, 好=0.989329@85, 问=0.994196@108, 问=0.053592@125]
 ch1.wav       无事件
 stereo.wav    channel 0 命中，channel 1 无事件
 ```
@@ -686,7 +686,7 @@ stereo.wav    channel 0 命中，channel 1 无事件
 - 事件 `token_probs`
 - 逐帧 top-k debug JSON
 
-`stereo.wav` 证明多路的 batch/cache/decoder/offset 没有串路。逐帧 top-k 的 token id 与 ORT 参考一致，prob 最大差约 `6.24e-6`。换用 `avg_30.pt` 导出后已重跑本节全部对齐验证：Python `0.787617 / 0.223722`、Native decoder `0.787617 / 0.223722`、Native streaming `0.787618 / 0.223723`。
+`stereo.wav` 证明多路的 batch/cache/decoder/offset 没有串路。逐帧 top-k 的 token id 与 ORT 参考一致，prob 最大差约 `6.24e-6`。重导出后已重跑本节全部对齐验证：Python `0.783476 / 0.224240`、ONNX 参考与 Native decoder `0.783478 / 0.224239`、Native streaming `0.783478 / 0.224239`。早期 `0.787617 / 0.223722` 对应旧 ONNX 资产，posterior 与 `avg_30.pt` 最大差约 `0.008`，不再作为当前工作点。
 
 ---
 

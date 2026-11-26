@@ -100,25 +100,29 @@ third_party/onnxruntime/lib/x86_64/libonnxruntime.so
 ## 3. Host 对齐验证
 
 ```bash
-cd /workspace/wekws-my/android
-bash tests/build_host.sh
-bash tests/run_compare.sh tests/data/ch0.wav
-bash tests/run_compare.sh tests/data/ch_nihao.wav
-bash tests/run_compare.sh tests/data/stereo.wav
+cd /workspace/wekws-my
+bash scripts/05_deploy/build_android_host.sh
+bash scripts/05_deploy/compare_scores.sh android/tests/data/ch0.wav
+bash scripts/05_deploy/compare_scores.sh android/tests/data/ch_nihao.wav
+bash scripts/05_deploy/compare_scores.sh android/tests/data/stereo.wav
 ```
 
-早期 `15.pt` 联调记录：
+`compare_scores.sh` 默认使用 `work/exp/hi_xiaowen/ds_tcn_ctc/avg_30.pt`，可用 `CHECKPOINT` 环境变量覆盖。
+
+当前部署资产的对齐记录（`avg_30.pt`，重导出 ONNX 后复测）：
 
 ```text
-ch0.wav       检测到 嗨小问   score=0.723124  start=69  end=129
-ch_nihao.wav  检测到 你好问问 score=0.927641  start=63  end=143
+ch0.wav       检测到 嗨小问   score=0.783478
+ch_nihao.wav  检测到 你好问问 score=0.224239
 ch1.wav       无事件
-stereo.wav    channel 0 检测到 嗨小问，channel 1 无事件
+stereo.wav    channel 0 命中，channel 1 无事件
 ```
 
-Python `infer_core.py` 与 Native streaming 的 score 对齐到 6 位小数；fbank 最大差约 `2.5e-5`。
+Python `infer_core.py` 为 `0.783476 / 0.224240`，ONNX 参考与 Native decoder/streaming 为 `0.783478 / 0.224239`，差异在 `2e-6` 内，3 位小数 `score.txt` 均为 `0.783 / 0.224`。每帧 top-k 的 token id 与 ORT 参考一致，prob 最大差约 `6.2e-6`。
 
-当前 assets 中的 `kws.onnx` 是另一版联调模型，结果以实际导出文件为准；最终换成 `avg_30.pt` 后需要重跑本节全部对齐验证。每帧 top-k 的 token id 与 ORT 参考一致，prob 最大差约 `6.2e-6`。
+历史值 `0.787617 / 0.223722` 来自旧 ONNX 资产；其与 `avg_30.pt` 的 posterior 最大差约 `0.008`，已被重新导出修复，不再作为当前对齐基线。
+
+历史记录：早期 `15.pt` 联调模型的 score 为 `0.723124` / `0.927641`，已不再是部署工作点，仅作追溯。
 
 ## 4. Android Gradle 构建
 
@@ -256,6 +260,6 @@ for (FrameDebug frame : engine.frameDebug(channel, 200)) {
 
 ## 注意事项
 
-- 导出脚本写入的 `15.pt` 是联调模型；部署前务必换 `avg_30.pt` 并重新跑 stage 3 选择阈值。
+- 导出脚本默认 checkpoint 已是 `work/exp/hi_xiaowen/ds_tcn_ctc/avg_30.pt`，阈值由 `--keyword_thresholds` 显式传入（`嗨小问=0.303,你好问问=0.039`）；历史 `15.pt` 联调模型不再作为部署工作点。
 - 如果需要修 `is_sublist` 边界行为，必须同时修改 Python `score_ctc.py` 和 Native `ctc_beam_search.cc`。
 - `build_host/`、`tests/out/`、`third_party/onnxruntime/` 是本地产物目录，不需要提交。
