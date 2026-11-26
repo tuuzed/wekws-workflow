@@ -1,6 +1,6 @@
 # Android 多路 KWS-CTC 工程
 
-工程目录：`/workspace/wekws-my/android`
+工程目录：`/workspace/wekws-workflow/android`
 
 包名 / applicationId / namespace：
 
@@ -53,9 +53,9 @@ tests/run_compare.sh               Python 与 Native 对齐验证
 当前 assets 中已有用于联调的 `kws.onnx`。训练完成并生成 `avg_30.pt` 后重新导出：
 
 ```bash
-cd /workspace/wekws-my/android
+cd /workspace/wekws-workflow/android
 /root/miniconda/envs/wekws/bin/python export/export_ctc_onnx.py \
-  --checkpoint /workspace/wekws-my/wekws/examples/hi_xiaowen/s0/exp/ds_tcn_ctc/avg_30.pt
+  --checkpoint /workspace/wekws-workflow/wekws/examples/hi_xiaowen/s0/exp/ds_tcn_ctc/avg_30.pt
 ```
 
 导出脚本会同时刷新：
@@ -81,7 +81,7 @@ app/src/main/assets/id_to_token.json
 ## 2. 下载 ORT Mobile
 
 ```bash
-cd /workspace/wekws-my/android
+cd /workspace/wekws-workflow/android
 bash export/download_ort_mobile.sh
 ```
 
@@ -100,7 +100,7 @@ third_party/onnxruntime/lib/x86_64/libonnxruntime.so
 ## 3. Host 对齐验证
 
 ```bash
-cd /workspace/wekws-my
+cd /workspace/wekws-workflow
 bash scripts/05_deploy/build_android_host.sh
 bash scripts/05_deploy/compare_scores.sh android/tests/data/ch0.wav
 bash scripts/05_deploy/compare_scores.sh android/tests/data/ch_nihao.wav
@@ -129,7 +129,7 @@ Python `infer_core.py` 为 `0.783476 / 0.224240`，ONNX 参考与 Native decoder
 需要本机配置 Android SDK（当前工作区未安装 Android SDK，因此这里只验证了 Native host 构建和 Python 对齐）：
 
 ```bash
-cd /workspace/wekws-my/android
+cd /workspace/wekws-workflow/android
 ./gradlew assembleDebug
 ```
 
@@ -238,7 +238,7 @@ score = sqrt(prod(token_probs[i].prob))
 host CLI 导出 JSON：
 
 ```bash
-cd /workspace/wekws-my/android
+cd /workspace/wekws-workflow/android
 LD_LIBRARY_PATH=build_host ./build_host/kws_host_cli \
   app/src/main/assets/kws.onnx \
   /tmp/kws_config_debug.json \

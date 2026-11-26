@@ -45,7 +45,7 @@
 ## 3. 环境设置
 
 ```bash
-cd /workspace/wekws-my
+cd /workspace/wekws-workflow
 source scripts/common/env.sh   # 统一设置 $WORK / $PYTHON_BIN / PYTHONPATH / pycache
 ```
 
@@ -248,7 +248,7 @@ stats.你_好_问_问.txt
 正确步骤：
 
 ```bash
-cd /workspace/wekws-my
+cd /workspace/wekws-workflow
 /root/miniconda/envs/wekws/bin/python scripts/03_export/export_android_onnx.py \
   --keyword_thresholds '嗨小问=0.303,你好问问=0.039'
 ```

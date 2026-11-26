@@ -1,6 +1,6 @@
 # 当前脚本工作流指导手册
 
-> 适用范围：外层仓库 `/workspace/wekws-my` 的当前 `scripts/` 工作流。
+> 适用范围：外层仓库 `/workspace/wekws-workflow` 的当前 `scripts/` 工作流。
 > 上游 `wekws/` 是 pin 在固定 commit 的只读 submodule；所有推荐命令都从仓库根目录执行，且不修改上游 recipe。
 > 关联专题：[完整训练手册（Conda 环境）](<wekws + MobvoiHotwords 完整训练手册（Conda 环境）.md>)、[FRR/FAR 评测操作手册](../evaluation/avg30_frr_far_evaluation.md)、[FRR/FAR 评测结果](../evaluation/avg30_frr_far_report.md)。
 
@@ -48,7 +48,7 @@
 
 | 变量 | 含义 / 默认值 |
 | :--- | :--- |
-| `WORKSPACE_ROOT` | `/workspace/wekws-my` |
+| `WORKSPACE_ROOT` | `/workspace/wekws-workflow` |
 | `WEKWS_ROOT` | `$WORKSPACE_ROOT/wekws` |
 | `WORK` | `$WORKSPACE_ROOT/work` |
 | `CONFIG_DIR` | `$WORKSPACE_ROOT/config/hi_xiaowen` |
@@ -74,7 +74,7 @@
 ### 2.1 环境检查
 
 ```bash
-cd /workspace/wekws-my
+cd /workspace/wekws-workflow
 source scripts/common/env.sh
 bash scripts/common/check_deps.sh
 ```
@@ -117,7 +117,7 @@ bash scripts/01_data/regenerate_data_lists.sh
 ### 3.1 初始训练
 
 ```bash
-cd /workspace/wekws-my
+cd /workspace/wekws-workflow
 source scripts/common/env.sh
 bash scripts/02_train/train_ctc.sh --gpus 0
 ```
@@ -163,7 +163,7 @@ bash scripts/02_train/resume_ctc.sh \
 ### 4.1 一键评估
 
 ```bash
-cd /workspace/wekws-my
+cd /workspace/wekws-workflow
 source scripts/common/env.sh
 bash scripts/04_eval/eval_ctc.sh --checkpoint "$DEPLOY_CHECKPOINT" --result_dir "$RESULT_DIR"
 ```
@@ -231,7 +231,7 @@ awk '$2 <= 0.2 {print; exit}' "$RESULT_DIR/stats/stats.你_好_问_问.txt"
 ### 5.1 通用 ONNX / JIT
 
 ```bash
-cd /workspace/wekws-my
+cd /workspace/wekws-workflow
 source scripts/common/env.sh
 bash scripts/03_export/export_onnx.sh
 bash scripts/03_export/export_jit.sh
@@ -245,7 +245,7 @@ bash scripts/03_export/export_jit.sh
 ### 5.2 Android 部署资产
 
 ```bash
-cd /workspace/wekws-my
+cd /workspace/wekws-workflow
 source scripts/common/env.sh
 $PYTHON_BIN scripts/03_export/export_android_onnx.py \
   --keyword_thresholds '嗨小问=0.303,你好问问=0.039'
@@ -330,7 +330,7 @@ $PYTHON_BIN scripts/04_eval/infer_webui.py --checkpoint avg_30.pt --port 7860
 ### 7.1 Native host 与三方对齐
 
 ```bash
-cd /workspace/wekws-my
+cd /workspace/wekws-workflow
 source scripts/common/env.sh
 bash scripts/05_deploy/build_android_host.sh
 bash scripts/05_deploy/compare_scores.sh android/tests/data/ch0.wav

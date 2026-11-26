@@ -1,6 +1,7 @@
 # 脚本归置与 wekws 上游只读迁移计划
 
-> 状态：Phase 0–5 已实施并通过验收；OpenSpec change `scripts-migration-and-upstream-readonly` 已同步 4 份 main specs 并归档至 `openspec/changes/archive/2026-11-26-scripts-migration-and-upstream-readonly`；外层仓库改动（含 `script-workflow-guide` 文档）待统一评审提交。
+> 状态：Phase 0–5 已实施并通过验收；OpenSpec change `scripts-migration-and-upstream-readonly` 已同步 4 份 main specs 并归档至 `openspec/changes/archive/2026-11-26-scripts-migration-and-upstream-readonly`；外层仓库迁移与 `script-workflow-guide` 文档已提交，项目目录已更名为 `/workspace/wekws-workflow` 并完成路径引用同步。
+> 历史路径：项目原目录为 `/workspace/wekws-my`，2026-11-26 更名为 `/workspace/wekws-workflow`；下文历史记录中的旧路径仅作追溯。
 > 日期：2026-11-25  
 > 更新日期：2026-11-26  
 > 参考手册：`docs/manuals/wekws + MobvoiHotwords 完整训练手册（Conda 环境）.md`、`docs/evaluation/avg30_frr_far_evaluation.md`
@@ -13,14 +14,14 @@
 将项目侧的数据准备、训练、评估、导出、部署脚本统一归置到：
 
 ```text
-/workspace/wekws-my/scripts
+/workspace/wekws-workflow/scripts
 ```
 
 同时将 `wekws` 作为**只读上游依赖**管理：
 
 - 不修改 `wekws` 的源码、脚本、配置；
 - 不在 `wekws/` 目录内产生 `data/`、`dict/`、`exp/`、`tensorboard/`、`mobvoi_kws_transcription/`、`__pycache__/` 等任何项目落地文件；
-- 外层 `/workspace/wekws-my` 已建立独立 git 并完成首次提交 `81c82f2`；
+- 外层 `/workspace/wekws-workflow` 已建立独立 git 并完成首次提交 `81c82f2`；
 - `wekws` 通过 git submodule 引入并 pin 到指定 commit；
 - 迁移验证无误后，恢复 `wekws` 当前已有的两处上游修改。
 
@@ -31,7 +32,7 @@
 | 编号 | 决策 | 说明 |
 |---:|---|---|
 | 1 | `wekws` 只读，不产生落地文件 | 所有数据、模型、实验、日志、下载物、bytecode 都写到外层 `work/` |
-| 2 | 外层创建独立 git 仓库，`wekws` 用 submodule 管理 | `/workspace/wekws-my` 成为项目仓库根 |
+| 2 | 外层创建独立 git 仓库，`wekws` 用 submodule 管理 | `/workspace/wekws-workflow` 成为项目仓库根 |
 | 3 | 迁移验证无误后恢复上游文件 | 先迁移并验证，再恢复 `wekws` 内已修改文件 |
 | 4 | 通用导出和 Android 导出都保留 | 同时保留 `wekws/bin/export_onnx.py` / `export_jit.py` 链路和 Android 动态 batch ONNX 导出 |
 | 5 | `mobvoi_kws_transcription` 由脚本下载 | 保存完整下载仓库，不手工把 `23.pt` 拷贝到 `models/base/` |
@@ -73,7 +74,7 @@ examples/hi_xiaowen/s0/tensorboard                12K
 特别注意：现有 `data/{train,dev,test}/data.list` 中的 `wav` 是旧绝对路径，指向：
 
 ```text
-/workspace/wekws-my/wekws/examples/hi_xiaowen/s0/data/local/...
+/workspace/wekws-workflow/wekws/examples/hi_xiaowen/s0/data/local/...
 ```
 
 迁移后必须重新生成 `data.list`，不能只移动目录。
@@ -81,7 +82,7 @@ examples/hi_xiaowen/s0/tensorboard                12K
 ### 3.3 外层已有项目资产
 
 ```text
-/workspace/wekws-my/
+/workspace/wekws-workflow/
 ├── .git/
 ├── .gitignore
 ├── AGENTS.md
@@ -112,14 +113,14 @@ examples/hi_xiaowen/s0/tensorboard                12K
 └── wekws/
 ```
 
-迁移前基线（2026-11-25）：`/workspace/wekws-my` 已完成首次提交 `81c82f2`；`.gitignore` 已包含 `!android/app/src/main/assets/kws.onnx`，部署模型已入库，`requirements.txt` 已锁定 `torch==2.5.1` / `torchaudio==2.5.1`。当时 `AGENTS.md` 与 `openspec/changes/scripts-migration-and-upstream-readonly/` 已创建但尚未提交，`scripts/`、`work/`、`config/` 尚未创建。当前这些外层结构均已建立；当时 `wekws` 仍为普通目录，commit `6a45aeb994dd81c0969ff877a5a7c46d60ed0c86`，两处本地修改和 `mobvoi_kws_transcription/` 尚在其中。当前 `wekws` 已转为 pin 在同一 commit 的 submodule，两处修改已恢复且下载物已迁出。
+迁移前基线（2026-11-25）：`/workspace/wekws-workflow` 已完成首次提交 `81c82f2`；`.gitignore` 已包含 `!android/app/src/main/assets/kws.onnx`，部署模型已入库，`requirements.txt` 已锁定 `torch==2.5.1` / `torchaudio==2.5.1`。当时 `AGENTS.md` 与 `openspec/changes/scripts-migration-and-upstream-readonly/` 已创建但尚未提交，`scripts/`、`work/`、`config/` 尚未创建。当前这些外层结构均已建立；当时 `wekws` 仍为普通目录，commit `6a45aeb994dd81c0969ff877a5a7c46d60ed0c86`，两处本地修改和 `mobvoi_kws_transcription/` 尚在其中。当前 `wekws` 已转为 pin 在同一 commit 的 submodule，两处修改已恢复且下载物已迁出。
 
 ---
 
 ## 4. 目标目录结构
 
 ```text
-/workspace/wekws-my/                         # 新项目 git 仓库
+/workspace/wekws-workflow/                         # 新项目 git 仓库
 ├── .git/
 ├── .gitmodules                              # wekws submodule 配置
 ├── .gitignore
@@ -189,7 +190,7 @@ examples/hi_xiaowen/s0/tensorboard                12K
 
 ### 5.1 外层仓库初始化
 
-已完成：`/workspace/wekws-my` 已创建独立 git 仓库并完成首次提交 `81c82f2`。后续迁移在此仓库内继续，先不提交 `wekws/`。
+已完成：`/workspace/wekws-workflow` 已创建独立 git 仓库并完成首次提交 `81c82f2`。后续迁移在此仓库内继续，先不提交 `wekws/`。
 
 当前 `.gitignore`（已落地）：
 
@@ -247,20 +248,20 @@ infer_cli/
 1. 记录当前上游 commit：
 
    ```bash
-   git -C /workspace/wekws-my/wekws rev-parse HEAD > /tmp/wekws_commit.txt
+   git -C /workspace/wekws-workflow/wekws rev-parse HEAD > /tmp/wekws_commit.txt
    ```
 
 2. 保存当前 diff 到外层备份位置：
 
    ```bash
-   git -C /workspace/wekws-my/wekws diff \
-     > /workspace/wekws-my/docs/plans/backups/wekws_local_changes.diff
+   git -C /workspace/wekws-workflow/wekws diff \
+     > /workspace/wekws-workflow/docs/plans/backups/wekws_local_changes.diff
    ```
 
 3. 完成所有脚本迁移和验证后，在验证通过的前提下：
 
    ```bash
-   cd /workspace/wekws-my
+   cd /workspace/wekws-workflow
    mv wekws wekws.old
    git submodule add https://github.com/wenet-e2e/wekws.git wekws
    git -C wekws checkout "$(cat /tmp/wekws_commit.txt)"
@@ -293,7 +294,7 @@ https://github.com/wenet-e2e/wekws.git
 `scripts/common/env.sh` 提供：
 
 ```bash
-WORKSPACE_ROOT=/workspace/wekws-my
+WORKSPACE_ROOT=/workspace/wekws-workflow
 WEKWS_ROOT=$WORKSPACE_ROOT/wekws
 WORK=$WORKSPACE_ROOT/work
 CONFIG_DIR=$WORKSPACE_ROOT/config/hi_xiaowen
@@ -727,7 +728,7 @@ EXP_DIR = WORK / "exp" / "hi_xiaowen" / "ds_tcn_ctc"
 1. 验证通过后恢复：
 
    ```bash
-   git -C /workspace/wekws-my/wekws checkout -- \
+   git -C /workspace/wekws-workflow/wekws checkout -- \
      examples/hi_xiaowen/s0/conf/ds_tcn_ctc.yaml \
      examples/hi_xiaowen/s0/run_ctc.sh
    ```
@@ -776,7 +777,7 @@ EXP_DIR = WORK / "exp" / "hi_xiaowen" / "ds_tcn_ctc"
 
 满足以下条件视为迁移完成：
 
-1. `/workspace/wekws-my` 是独立 git 仓库；
+1. `/workspace/wekws-workflow` 是独立 git 仓库；
 2. `wekws` 是 submodule，且 `git -C wekws status --short` 为空；
 3. `wekws/` 内无任何项目落地文件，包括 `data/`、`dict/`、`exp/`、`tensorboard/`、`mobvoi_kws_transcription/`、`__pycache__/`；
 4. 所有项目入口命令都在 `scripts/` 下有对应脚本；

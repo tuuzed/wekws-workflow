@@ -3,7 +3,7 @@
 工程目录：
 
 ```text
-/workspace/wekws-my/android
+/workspace/wekws-workflow/android
 ```
 
 包名 / applicationId / namespace：
@@ -403,7 +403,7 @@ end_ms   = end_frame * frame_shift_ms
 host CLI 导出：
 
 ```bash
-cd /workspace/wekws-my/android
+cd /workspace/wekws-workflow/android
 LD_LIBRARY_PATH=build_host ./build_host/kws_host_cli \
   app/src/main/assets/kws.onnx \
   /tmp/kws_config_debug.json \
@@ -625,7 +625,7 @@ third_party/onnxruntime/lib/x86_64/libonnxruntime.so
 需要 Android SDK：
 
 ```bash
-cd /workspace/wekws-my/android
+cd /workspace/wekws-workflow/android
 ./gradlew assembleDebug
 ```
 
@@ -644,7 +644,7 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 构建：
 
 ```bash
-cd /workspace/wekws-my/android
+cd /workspace/wekws-workflow/android
 bash tests/build_host.sh
 ```
 
@@ -706,9 +706,9 @@ stereo.wav    channel 0 命中，channel 1 无事件
 1. 已用 `avg_30.pt` 重新导出 Android ONNX：
 
    ```bash
-   cd /workspace/wekws-my/android
+   cd /workspace/wekws-workflow/android
    /root/miniconda/envs/wekws/bin/python export/export_ctc_onnx.py \
-     --checkpoint /workspace/wekws-my/wekws/examples/hi_xiaowen/s0/exp/ds_tcn_ctc/avg_30.pt \
+     --checkpoint /workspace/wekws-workflow/wekws/examples/hi_xiaowen/s0/exp/ds_tcn_ctc/avg_30.pt \
      --keyword_thresholds '嗨小问=0.303,你好问问=0.039'
    ```
 

@@ -37,7 +37,7 @@
 ## 复现命令
 
 ```bash
-cd /workspace/wekws-my
+cd /workspace/wekws-workflow
 source scripts/common/env.sh
 bash scripts/04_eval/eval_ctc.sh --checkpoint "$DEPLOY_CHECKPOINT" --result_dir "$RESULT_DIR"
 

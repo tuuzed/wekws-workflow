@@ -129,7 +129,7 @@ scripts/03_export/export_android_onnx.py
 支持：
 
 ```bash
-cd /workspace/wekws-my
+cd /workspace/wekws-workflow
 /root/miniconda/envs/wekws/bin/python scripts/03_export/export_android_onnx.py \
   --keywords "嗨小问,你好问问,自定义词" \
   --keyword_thresholds '嗨小问=0.303,你好问问=0.039,自定义词=0.3'
@@ -168,11 +168,11 @@ cd /workspace/wekws-my
 import sys
 from pathlib import Path
 
-sys.path.insert(0, "/workspace/wekws-my/wekws")
+sys.path.insert(0, "/workspace/wekws-workflow/wekws")
 
 from wenet.text.char_tokenizer import CharTokenizer
 
-dict_dir = Path("/workspace/wekws-my/wekws/examples/hi_xiaowen/s0/dict")
+dict_dir = Path("/workspace/wekws-workflow/wekws/examples/hi_xiaowen/s0/dict")
 
 tokenizer = CharTokenizer(
     str(dict_dir / "dict.txt"),

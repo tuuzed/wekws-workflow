@@ -344,7 +344,7 @@ score <  keywords[k].trigger_threshold -> 不上报
 Python 推理：
 
 ```text
-/workspace/wekws-my/infer_core.py
+/workspace/wekws-workflow/infer_core.py
 ```
 
 关键逻辑：
@@ -359,19 +359,19 @@ hit_score = math.sqrt(hit_score)
 stage 3 评估：
 
 ```text
-/workspace/wekws-my/wekws/wekws/bin/score_ctc.py
+/workspace/wekws-workflow/wekws/wekws/bin/score_ctc.py
 ```
 
 CTC beam search：
 
 ```text
-/workspace/wekws-my/wekws/wekws/model/loss.py
+/workspace/wekws-workflow/wekws/wekws/model/loss.py
 ```
 
 Android Native：
 
 ```text
-/workspace/wekws-my/android/app/src/main/cpp/engine/ctc_beam_search.cc
+/workspace/wekws-workflow/android/app/src/main/cpp/engine/ctc_beam_search.cc
 ```
 
 关键函数：
@@ -410,7 +410,7 @@ score = sqrt(prod(token_probs[i].prob))
 CLI 用法：
 
 ```bash
-cd /workspace/wekws-my
+cd /workspace/wekws-workflow
 /root/miniconda/envs/wekws/bin/python infer_cli.py \
   --wav android/tests/data/ch0.wav \
   --checkpoint avg_30.pt \
@@ -481,7 +481,7 @@ WebUI 中勾选「输出每帧 top-k（调试）」即可；完整 JSON 在日�
 host CLI 导出：
 
 ```bash
-cd /workspace/wekws-my/android
+cd /workspace/wekws-workflow/android
 LD_LIBRARY_PATH=build_host ./build_host/kws_host_cli \
   app/src/main/assets/kws.onnx \
   app/src/main/assets/config.json \

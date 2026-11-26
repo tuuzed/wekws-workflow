@@ -1,7 +1,7 @@
 # AGENTS.md
 
 ## 作用域与归属
-- 主仓库是 `/workspace/wekws-my`；`wekws/` 已是 pin 在 `6a45aeb994dd81c0969ff877a5a7c46d60ed0c86` 的只读 submodule（URL `https://github.com/wenet-e2e/wekws.git`），只提交 gitlink，不提交上游源码。不要把 `data/`、`exp/`、`__pycache__` 留在里面。
+- 主仓库是 `/workspace/wekws-workflow`；`wekws/` 已是 pin 在 `6a45aeb994dd81c0969ff877a5a7c46d60ed0c86` 的只读 submodule（URL `https://github.com/wenet-e2e/wekws.git`），只提交 gitlink，不提交上游源码。不要把 `data/`、`exp/`、`__pycache__` 留在里面。
 - `android/` 是部署工程（包名 `com.haibingtech.kws`）；`infer_core.py` 由 `infer_cli.py` 和 `infer_webui.py` 共用；文档在 `docs/`。
 - `work/`、`infer_cli/`、`__pycache__`、`*.onnx` 已加入 gitignore；只有 `android/app/src/main/assets/kws.onnx` 被显式重新纳入。
 

@@ -81,7 +81,7 @@ MobvoiHotwords 来自 OpenSLR SLR87，包含 **Hi Xiaowen** 和 **Nihao Wenwen**
 下载地址：`openslr.org/resources/87/`。推荐直接执行外层下载脚本，所有资源落在 `work/downloads/`，不修改上游 recipe：
 
 ```bash
-cd /workspace/wekws-my
+cd /workspace/wekws-workflow
 source scripts/common/env.sh
 bash scripts/01_data/download_mobvoi.sh
 bash scripts/01_data/download_mobvoi_transcription.sh
@@ -163,7 +163,7 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 数据准备完成后，直接从外层入口启动训练：
 
 ```bash
-cd /workspace/wekws-my
+cd /workspace/wekws-workflow
 source scripts/common/env.sh
 bash scripts/02_train/train_ctc.sh --gpus 0
 ```
@@ -181,7 +181,7 @@ checkpoint 写入 `$EXAMPLE_EXP`，TensorBoard 写入 `$EXAMPLE_TB`，不会回�
 续训使用独立入口和配置，**不修改上游脚本**：
 
 ```bash
-cd /workspace/wekws-my
+cd /workspace/wekws-workflow
 source scripts/common/env.sh
 bash scripts/02_train/resume_ctc.sh \
   --checkpoint "$EXAMPLE_EXP/avg_30.pt"
@@ -206,7 +206,7 @@ import json
 from collections import Counter
 for split in ['train', 'dev']:
     labels = []
-    with open(f'/workspace/wekws-my/work/data/hi_xiaowen/{split}/data.list') as f:
+    with open(f'/workspace/wekws-workflow/work/data/hi_xiaowen/{split}/data.list') as f:
         for line in f:
             labels.append(json.loads(line)['txt'])
     c = Counter(labels)
@@ -221,7 +221,7 @@ for split in ['train', 'dev']:
 训练完成后，使用外层导出脚本；参数是 `--onnx_model` / `--jit_model`，不是旧手册中的 `--output_dir`：
 
 ```bash
-cd /workspace/wekws-my
+cd /workspace/wekws-workflow
 source scripts/common/env.sh
 bash scripts/03_export/export_onnx.sh
 bash scripts/03_export/export_jit.sh
