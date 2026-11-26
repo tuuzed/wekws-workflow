@@ -1,10 +1,12 @@
 # avg_30.pt FRR/FAR 评测操作手册
 
+> 当前外层 `scripts/` 工作流的命令速查与固定约束见[当前脚本工作流指导手册](../manuals/script_workflow_guide.md)。本文继续保留 FRR/FAR 评测参数、选点方法与历史记录。
+
 > 日期：2026-11-26  
-> 适用 checkpoint：`exp/ds_tcn_ctc/avg_30.pt`  
+> 适用 checkpoint：`work/exp/hi_xiaowen/ds_tcn_ctc/avg_30.pt`  
 > 关键词：`嗨小问`、`你好问问`  
 > 工作点约束：FAR ≤ 0.2 次/小时  
-> 说明：本文按当前目录结构编写；脚本迁移完成后，路径需替换为 `scripts/` 与 `work/` 下的新路径。
+> 说明：本文使用外层 `scripts/` / `$WORK` 路径；上游 recipe 保持只读。
 
 ---
 
@@ -33,7 +35,7 @@
 4. test 集路径：
 
    ```text
-   examples/hi_xiaowen/s0/data/test/data.list
+   work/data/hi_xiaowen/test/data.list
    ```
 
 5. 评测使用单卡 GPU。当前训练仍占用 GPU，若同时运行，需降低 batch size 或等待训练结束。
@@ -43,32 +45,28 @@
 ## 3. 环境设置
 
 ```bash
-export REPO=/workspace/wekws-my/wekws
-export RECIPE=$REPO/examples/hi_xiaowen/s0
-export PY=/root/miniconda/envs/wekws/bin/python
-export PYTHONPATH=$REPO${PYTHONPATH:+:$PYTHONPATH}
-export PYTHONDONTWRITEBYTECODE=1
-
-cd $RECIPE
+cd /workspace/wekws-my
+source scripts/common/env.sh   # 统一设置 $WORK / $PYTHON_BIN / PYTHONPATH / pycache
 ```
 
-必须 `cd $RECIPE`，因为 `exp/ds_tcn_ctc/config.yaml` 中的 CMVN 路径是相对路径：
+推荐直接执行外层入口，它会自动生成带**绝对 CMVN 路径**的评测 config，因此不再依赖旧的 recipe cwd：
 
-```yaml
-cmvn:
-  cmvn_file: data/train/global_cmvn
+```bash
+bash scripts/04_eval/eval_ctc.sh --checkpoint "$DEPLOY_CHECKPOINT" \
+  --result_dir "$RESULT_DIR"
 ```
 
-若在 `$REPO` 根目录执行 `score_ctc.py`，会找不到 CMVN 文件。
+若手工调用 `score_ctc.py`，不得依赖旧 recipe cwd：要么把 `model.cmvn.cmvn_file` 改为绝对路径（例如 `$EXAMPLE_DATA/train/global_cmvn`，可用 `scripts/common/make_abs_cmvn_config.py` 生成），要么固定 cwd 到能解析 `data/train/global_cmvn` 的目录。训练产物中的 `config.yaml` 仍保留相对路径，不要直接拿它当评测 config。
 
 ---
 
 ## 4. 生成 avg_30.pt
 
 ```bash
-$PY -m wekws.bin.average_model \
-  --dst_model exp/ds_tcn_ctc/avg_30.pt \
-  --src_path exp/ds_tcn_ctc \
+source scripts/common/env.sh
+$PYTHON_BIN -m wekws.bin.average_model \
+  --dst_model "$DEPLOY_CHECKPOINT" \
+  --src_path "$EXAMPLE_EXP" \
   --num 30 \
   --val_best
 ```
@@ -91,20 +89,24 @@ $PY -m wekws.bin.average_model \
 
 ## 5. 生成 score 文件
 
-```bash
-mkdir -p exp/ds_tcn_ctc/test_avg_30_pt
+手工调用时必须显式传 `--dict`，且 config 必须是带绝对 CMVN 路径的派生文件（`$RESULT_DIR/config.yaml`）：
 
-$PY -m wekws.bin.score_ctc \
-  --config exp/ds_tcn_ctc/config.yaml \
-  --dict dict \
-  --test_data data/test/data.list \
+```bash
+source scripts/common/env.sh
+mkdir -p "$RESULT_DIR/stats"
+$PYTHON_BIN "$WEKWS_ROOT/wekws/bin/score_ctc.py" \
+  --config "$RESULT_DIR/config.yaml" \
+  --dict "$EXAMPLE_DICT" \
+  --test_data "$EXAMPLE_DATA/test/data.list" \
   --gpu 0 \
-  --checkpoint exp/ds_tcn_ctc/avg_30.pt \
+  --checkpoint "$DEPLOY_CHECKPOINT" \
   --batch_size 32 \
   --num_workers 8 \
-  --score_file exp/ds_tcn_ctc/test_avg_30_pt/score.txt \
+  --score_file "$RESULT_DIR/score.txt" \
   --keywords '\u55e8\u5c0f\u95ee,\u4f60\u597d\u95ee\u95ee'
 ```
+
+也可以直接 `bash scripts/04_eval/eval_ctc.sh`，它会一次性完成 config 派生、score、DET 和报告。
 
 参数说明：
 
@@ -143,15 +145,15 @@ score 写入时只保留 3 位小数，因此后续阈值步长使用 `0.001`，
 ## 6. 计算 FRR/FAR 与 DET 曲线
 
 ```bash
-mkdir -p exp/ds_tcn_ctc/test_avg_30_pt/stats
-
-$PY -m wekws.bin.compute_det_ctc \
-  --test_data data/test/data.list \
-  --dict dict \
+source scripts/common/env.sh
+mkdir -p "$RESULT_DIR/stats"
+$PYTHON_BIN "$WEKWS_ROOT/wekws/bin/compute_det_ctc.py" \
+  --test_data "$EXAMPLE_DATA/test/data.list" \
+  --dict "$EXAMPLE_DICT" \
   --keywords '\u55e8\u5c0f\u95ee,\u4f60\u597d\u95ee\u95ee' \
-  --score_file exp/ds_tcn_ctc/test_avg_30_pt/score.txt \
-  --stats_dir exp/ds_tcn_ctc/test_avg_30_pt/stats \
-  --det_curve_path exp/ds_tcn_ctc/test_avg_30_pt/stats/det.png \
+  --score_file "$RESULT_DIR/score.txt" \
+  --stats_dir "$RESULT_DIR/stats" \
+  --det_curve_path "$RESULT_DIR/stats/det.png" \
   --step 0.001 \
   --window_shift 50
 ```
@@ -159,9 +161,9 @@ $PY -m wekws.bin.compute_det_ctc \
 输出文件：
 
 ```text
-exp/ds_tcn_ctc/test_avg_30_pt/stats/stats.嗨_小_问.txt
-exp/ds_tcn_ctc/test_avg_30_pt/stats/stats.你_好_问_问.txt
-exp/ds_tcn_ctc/test_avg_30_pt/stats/det.png
+$RESULT_DIR/stats/stats.嗨_小_问.txt
+$RESULT_DIR/stats/stats.你_好_问_问.txt
+$RESULT_DIR/stats/det.png
 ```
 
 每个 stats 文件每行三列：
@@ -185,12 +187,12 @@ threshold  false_alarm_per_hour  FRR
 例如要求 FAR ≤ 0.2 次/小时：
 
 ```bash
-awk '$2 <= 0.2 {print; exit}' \
-  exp/ds_tcn_ctc/test_avg_30_pt/stats/stats.嗨_小_问.txt
-
-awk '$2 <= 0.2 {print; exit}' \
-  exp/ds_tcn_ctc/test_avg_30_pt/stats/stats.你_好_问_问.txt
+source scripts/common/env.sh
+awk '$2 <= 0.2 {print; exit}' "$RESULT_DIR/stats/stats.嗨_小_问.txt"
+awk '$2 <= 0.2 {print; exit}' "$RESULT_DIR/stats/stats.你_好_问_问.txt"
 ```
+
+`scripts/04_eval/eval_ctc.sh` 已把这步写进 `docs/evaluation/avg30_frr_far_report.md`。
 
 第一条满足约束的行就是该 FAR 约束下 FRR 最低的阈值。
 
@@ -198,50 +200,42 @@ Android 运行时已改为每关键词独立阈值，因此不需要取两个阈
 
 ### 7.1 实测结果（avg_30.pt，2026-11-26）
 
-工作点约束取 `FAR ≤ 0.2/h`。实际执行上述 `awk` 得到首个满足约束的行：
+工作点约束取 `FAR ≤ 0.2/h`。以当前 `work/eval/avg_30_pt/score.txt` 重算后，执行上述 `awk` 得到首个满足约束的行：
 
 ```text
 stats.嗨_小_问.txt
-0.297 0.189454 0.039564
+0.293 0.189454 0.039470
 
 stats.你_好_问_问.txt
-0.000 0.189813 0.031952
+0.038 0.189813 0.032986
 ```
 
-这是理论最低 FRR 工作点。为了给 FAR 留余量，最终部署没有取 `0.297 / 0.000`，而是取：
+这是当前复算的理论最低 FRR 工作点 `0.293 / 0.038`。历史评测曾记录 `0.297 / 0.000`（FRR 约 `3.96%` / `3.20%`），与当前 3 位小数 `score.txt` 不一致，仅保留作追溯，不再作为选点依据。
+
+为了给 FAR 留余量，最终部署没有取理论最低点，而是取：
 
 ```text
 嗨小问   = 0.303
 你好问问 = 0.039
 ```
 
-最终工作点：
+最终工作点（当前 stats 对应行）：
 
 | 关键词 | 阈值 | FAR（次/小时） | FRR |
 |---|---:|---:|---:|
-| 嗨小问 | 0.303 | 0.174880 | 4.03% |
-| 你好问问 | 0.039 | 0.175212 | 3.31% |
+| 嗨小问 | 0.303 | 0.174880 | 4.0598% |
+| 你好问问 | 0.039 | 0.189813 | 3.2986% |
 
-两词 FAR 均约 `0.175/h`，相对 `0.2/h` 上限保留约 `0.025/h` 余量。
-
-对比共享阈值 `0.297`：
-
-| 指标 | 共享阈值 0.297 | 独立阈值 | 变化 |
-|---|---:|---:|---:|
-| 嗨小问 FRR | 3.96% | 4.03% | +0.07pp |
-| 你好问问 FRR | 12.85% | 3.31% | -9.54pp |
-| 你好问问 FAR | 0.0438/h | 0.1752/h | 上升，但仍满足约束 |
-
-独立阈值的主要收益是把“你好问问”的漏唤醒率从 `12.85%` 降到 `3.31%`；代价是它的误唤醒上升，但仍低于 `0.2/h` 目标。
+两个阈值都满足 `FAR ≤ 0.2/h`，嗨小问余量约 `0.025/h`，你好问问余量约 `0.010/h`。早期报告中记录的 `0.174880 / 4.03%` 与 `0.175212 / 3.31%` 来自旧评测，保留在 `docs/evaluation/avg30_frr_far_report.md` 作历史记录。
 
 不同 FAR 目标下的独立阈值参考（按当前 stats 文件重新计算）：
 
 | FAR 目标 | 嗨小问阈值 / FRR | 你好问问阈值 / FRR |
 |---:|---:|---:|
-| ≤ 0.5/h | 0.154 / 2.57% | 0.000 / 3.20% |
-| ≤ 0.2/h | 0.297 / 3.96% | 0.000 / 3.20% |
-| ≤ 0.1/h | 0.483 / 6.16% | 0.121 / 4.73% |
-| ≤ 0.05/h | 0.694 / 9.47% | 0.215 / 7.64% |
+| ≤ 0.5/h | 0.154 / 2.556% | 0.000 / 3.195% |
+| ≤ 0.2/h | 0.293 / 3.947% | 0.038 / 3.299% |
+| ≤ 0.1/h | 0.496 / 6.343% | 0.121 / 4.689% |
+| ≤ 0.05/h | 0.690 / 9.332% | 0.220 / 7.838% |
 
 当前部署取 `≤ 0.2/h` 对应的保守工作点 `0.303 / 0.039`，而不是表中首个满足值。
 
@@ -249,15 +243,13 @@ stats.你_好_问_问.txt
 
 ## 8. 重新导出 ONNX 与独立阈值
 
-`android/export/export_ctc_onnx.py` 现在直接生成独立阈值配置，不再需要导出后手工 patch。
+`scripts/03_export/export_android_onnx.py` 直接生成独立阈值配置，不再需要导出后手工 patch。旧路径 `android/export/export_ctc_onnx.py` 仅保留兼容 wrapper。
 
 正确步骤：
 
 ```bash
-cd $REPO/../
-
-$PY android/export/export_ctc_onnx.py \
-  --checkpoint wekws/examples/hi_xiaowen/s0/exp/ds_tcn_ctc/avg_30.pt \
+cd /workspace/wekws-my
+/root/miniconda/envs/wekws/bin/python scripts/03_export/export_android_onnx.py \
   --keyword_thresholds '嗨小问=0.303,你好问问=0.039'
 ```
 
@@ -295,7 +287,7 @@ android/app/src/main/assets/id_to_token.json
 
 注意：
 
-1. 导出脚本默认 checkpoint 仍是 `15.pt`，必须通过 `--checkpoint` 显式指定 `avg_30.pt`；
+1. 导出脚本默认 checkpoint 已固定为 `work/exp/hi_xiaowen/ds_tcn_ctc/avg_30.pt`，更新 epoch 不会自动替换部署资产；
 2. 必须通过 `--keyword_thresholds` 显式传入所有关键词阈值，不提供默认值；
 3. Android ONNX 输出是 posterior，不是 logits，Native 侧不再做 softmax；
 4. score 定义与 `score_ctc.py` 一致，为 `sqrt(∏ token_prob)`；
@@ -315,8 +307,8 @@ docs/evaluation/avg30_frr_far_report.md
 
 | 模型 | 关键词 | FAR 目标（次/小时） | 阈值 | FRR |
 |---|---|---:|---:|---:|
-| avg_30.pt | 嗨小问 | 0.2 | 0.303 | 4.03% |
-| avg_30.pt | 你好问问 | 0.2 | 0.039 | 3.31% |
+| avg_30.pt | 嗨小问 | 0.2 | 0.303 | 4.0598% |
+| avg_30.pt | 你好问问 | 0.2 | 0.039 | 3.2986% |
 
 同时记录：
 
@@ -330,13 +322,9 @@ docs/evaluation/avg30_frr_far_report.md
 
 ### 10.1 `FileNotFoundError: data/train/global_cmvn`
 
-原因：没有在 `$RECIPE` 目录下执行 `score_ctc.py`。
+原因：直接拿训练产物中的 `config.yaml` 做评测 config，CMVN 是相对路径，而 cwd 不是旧 recipe 目录。
 
-处理：
-
-```bash
-cd $RECIPE
-```
+处理：使用 `scripts/04_eval/eval_ctc.sh` 生成的 `$RESULT_DIR/config.yaml`（绝对路径），或先用 `scripts/common/make_abs_cmvn_config.py` 派生 config。不要依赖 cwd。
 
 ### 10.2 关键词变成乱码
 
@@ -373,18 +361,19 @@ cd $RECIPE
 
 ## 11. 迁移后路径对照
 
-脚本迁移完成后，命令入口将变为：
+命令入口：
 
 ```text
 scripts/04_eval/eval_ctc.sh
 scripts/03_export/export_android_onnx.py
+scripts/05_deploy/compare_scores.sh
 ```
 
 路径对应关系：
 
-| 当前路径 | 迁移后路径 |
+| 旧路径 | 当前路径 |
 |---|---|
 | `wekws/examples/hi_xiaowen/s0/exp/ds_tcn_ctc` | `work/exp/hi_xiaowen/ds_tcn_ctc` |
 | `wekws/examples/hi_xiaowen/s0/data` | `work/data/hi_xiaowen` |
 | `wekws/examples/hi_xiaowen/s0/dict` | `work/dict/hi_xiaowen` |
-| `android/export/export_ctc_onnx.py` | `scripts/03_export/export_android_onnx.py` |
+| `android/export/export_ctc_onnx.py` | `scripts/03_export/export_android_onnx.py`（旧路径保留兼容 wrapper） |

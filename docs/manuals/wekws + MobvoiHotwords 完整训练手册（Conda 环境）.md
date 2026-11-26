@@ -1,16 +1,21 @@
 # wekws + MobvoiHotwords 完整训练手册（Conda 环境）
 
+> 当前外层 `scripts/` 工作流的命令速查与固定约束见[当前脚本工作流指导手册](script_workflow_guide.md)。本文继续保留 Conda、显存、负样本策略等专题细节。
+
+> **当前推荐流程**：从外层仓库根目录执行 `scripts/` 入口，上游 `wekws/` 保持只读。
+> 下文出现的 `run_ctc.sh` stage 说明仅作为**上游 recipe 历史参考**，不再作为推荐命令；迁移后对应的外层命令见下表与 `docs/plans/scripts_migration_and_upstream_readonly_plan.md`。
 
 ## 〇、流程总览与前置条件
 
-| 阶段 | 关键动作 | 对应 `run_ctc.sh` stage |
+| 阶段 | 外层入口（推荐） | 上游 `run_ctc.sh` stage（历史参考） |
 | :--- | :--- | :--- |
-| 环境 | Conda 创建 `wekws` 环境，安装 sox、锁定版本的 PyTorch/torchaudio | — |
-| 数据下载 | 下载 17 GB 音频 + 6.3 MB 资源 | `-3` |
-| 格式转换 | 生成 `wav.scp` / `text` / `data.list` | `-2` ~ `0` |
-| 训练 | 调整 batch size 后启动 CTC 训练 | `1` ~ `4` |
-| 续训 | 从已有 checkpoint 热启动继续训练 | `1` ~ `4` |
-| 导出 | 转 ONNX 用于部署 | 训练后手动执行 |
+| 环境 | `source scripts/common/env.sh`、`bash scripts/common/check_deps.sh` | — |
+| 数据下载 | `scripts/01_data/download_mobvoi.sh`、`download_mobvoi_transcription.sh` | `-3` |
+| 格式转换 | `scripts/01_data/prepare_mobvoi.sh`、`regenerate_data_lists.sh`、`prepare_dict.sh` | `-2` ~ `0` |
+| 训练 | `scripts/02_train/train_ctc.sh` | `1` ~ `4` |
+| 续训 | `scripts/02_train/resume_ctc.sh --checkpoint <file>` | `1` ~ `4` |
+| 评估 | `scripts/04_eval/eval_ctc.sh` | `3` |
+| 导出 | `scripts/03_export/export_onnx.sh` / `export_jit.sh` / `export_android_onnx.py` | `4` |
 
 **前置条件：** Linux / macOS，NVIDIA GPU（CPU 可训练但较慢），约 **20 GB** 磁盘空间。显存建议 **≥ 16 GiB**；即使显存达到 16 GiB，也要按下文第三节调低 batch size。
 
@@ -73,100 +78,79 @@ MobvoiHotwords 来自 OpenSLR SLR87，包含 **Hi Xiaowen** 和 **Nihao Wenwen**
 | `mobvoi_hotword_dataset.tgz` | **~17 GB** | 关键词 + 非关键词音频 |
 | `mobvoi_hotword_dataset_resources.tgz` | **~6.3 MB** | 标签、说话人、信道信息（JSON） |
 
-下载地址：`openslr.org/resources/87/`。`run_ctc.sh` 的 **stage -3** 已内置下载逻辑，只需把脚本中的 `download_dir` 指向数据存放位置：
+下载地址：`openslr.org/resources/87/`。推荐直接执行外层下载脚本，所有资源落在 `work/downloads/`，不修改上游 recipe：
 
 ```bash
-# 编辑 run_ctc.sh，找到：
-download_dir=/your/path/to/MobvoiHotwords
+cd /workspace/wekws-my
+source scripts/common/env.sh
+bash scripts/01_data/download_mobvoi.sh
+bash scripts/01_data/download_mobvoi_transcription.sh
 ```
 
-然后执行：
-
-```bash
-bash run_ctc.sh --stage -3 --stop_stage -3
-```
-
-国内下载 17 GB 较慢时，可使用 OpenSLR 国内镜像 `openslr.magicdatatech.com/resources/87/` 手动下载，放入 `download_dir` 后跳过 `-3` 阶段。
+两个脚本都是幂等的：目标目录已存在时直接跳过，不修改已有资源。国内下载 17 GB 较慢时，可使用 OpenSLR 国内镜像 `openslr.magicdatatech.com/resources/87/` 手动下载后放入 `$MOBVOI_DIR`；不要放回 `wekws/examples/hi_xiaowen/s0/`。
 
 ### 2.2 格式转换：从 tgz 到 `data.list`
 
-`run_ctc.sh` 的 **stage -2** 会写入标签映射，并调用 `local/prepare_data.py` 分别处理 train / dev / test 的正样本（`p_`）和负样本（`n_`）：
-
-```text
-<filler> -1
-Hi_Xiaowen 0
-Nihao_Wenwen 1
-```
+外层 `prepare_mobvoi.sh` 调用上游数据准备工具，但所有输出都写到 `work/data/hi_xiaowen/`。它生成 train / dev / test 的 `wav.scp`、`text`、`wav.dur`、`data.list` 以及 `train/global_cmvn`；标签映射沿用 2599 维词表，不再手工照抄 `<filler> -1 / Hi_Xiaowen 0 / Nihao_Wenwen 1`。
 
 **执行：**
 
 ```bash
-bash run_ctc.sh --stage -2 --stop_stage -2
+source scripts/common/env.sh
+bash scripts/01_data/prepare_mobvoi.sh
+bash scripts/01_data/regenerate_data_lists.sh
+bash scripts/01_data/prepare_dict.sh
 ```
 
-如果日志中出现 `fatal: destination path 'mobvoi_kws_transcription' already exists`，这是之前中断运行残留的目录，直接删除即可：
-
-```bash
-rm -rf mobvoi_kws_transcription
-```
-
-**stage -1 是可选的**：它用 Paraformer 对负样本做转写，服务于基于文本的建模需求。标准 CTC 唤醒词训练可以直接从 **-2 跳到 0**。
-
-**stage 0** 计算 CMVN 并生成最终的 `data.list`（JSON 行格式，含 `key`、`txt` 标签、`duration` 和 `wav` 路径）。推荐从 `-2` 一次执行到 `0`：
-
-```bash
-bash run_ctc.sh --stage -2 --stop_stage 0
-```
+`regenerate_data_lists.sh` 会强制把所有 wav 路径重写为 `$EXAMPLE_DATA/...`，逐条检查文件存在，并扫描旧上游路径；发现残留即失败。旧 recipe 的 `mobvoi_kws_transcription/` 已迁到 `$MOBVOI_TRANSCRIPTION_DIR`，不要删除该目录，脚本会识别并跳过重复下载。
 
 ### 2.3 降低 DataLoader worker 数（可选）
 
-`run_ctc.sh` stage 0 默认调用 `compute_cmvn_stats.py --num_workers 16`，日志中会出现 “suggested max number... is 8” 的警告。如果后续处理变慢或卡住，可以将 `run_ctc.sh` 中该行改为 `--num_workers 8`。这不是致命错误，但可避免不必要的资源争抢。
+外层 `prepare_mobvoi.sh` 已统一使用 `--num_workers 8`，无需修改上游脚本。若日志仍出现 workers 警告，优先检查 CPU 配额和 `$WORK/data/hi_xiaowen/train/global_cmvn` 是否正常生成。
 
 
 ## 三、训练配置与启动（含显存调优与续训）
 
-### 3.1 `run_ctc.sh` 中值得确认的变量
+### 3.1 外层训练入口显式参数
 
-| 变量 | 默认值 | 说明 |
+| 参数 | 默认值 | 说明 |
 | :--- | :--- | :--- |
-| `config` | `conf/ds_tcn_ctc.yaml` | 模型结构与超参 |
-| `gpus` | `"0"` | GPU 编号，多卡写 `"0,1"` |
-| `num_keywords` | `2599` | 输出类别数，与预训练 checkpoint 一致 |
-| `norm_mean` / `norm_var` | `true` | CMVN 归一化开关 |
-| `checkpoint` | 空 | **非空即加载权重**；脚本在 stage 1 会检测 `mobvoi_kws_transcription/23.pt` 是否存在，存在则自动填入该路径用于微调；续训时手动指向自己的模型文件 |
-| `average_model` | `true` | 对最后 `num_average`（默认 30）个 checkpoint 做平均 |
+| `--config` | `$WORKSPACE_ROOT/config/hi_xiaowen/ds_tcn_ctc.yaml` | 外层配置，含 `batch_size: 64` 与 `num_keywords: 2599` |
+| `--gpus` | `0` | GPU 编号 |
+| `--num_keywords` | `2599` | 输出类别数，与 `23.pt` 和现有词表绑定 |
+| `--cmvn_file` | `$EXAMPLE_DATA/train/global_cmvn` | 显式绝对路径，不依赖 recipe cwd |
+| `--checkpoint` | `$MOBVOI_TRANSCRIPTION_DIR/23.pt` | 初始微调的 base checkpoint；可显式覆盖 |
+| `--model_dir` | `$EXAMPLE_EXP` | 模型与 checkpoint 输出目录 |
+| `--tensorboard_dir` | `$EXAMPLE_TB` | TensorBoard 输出目录 |
 
-**关于 `checkpoint` 的说明：** `run_ctc.sh` 的 stage 1 开头有一段**条件判断**——若 `mobvoi_kws_transcription/23.pt` 存在，就把它赋给 `checkpoint` 并打印 `Use the base model trained with WenetSpeech as checkpoint`。这属于**微调**而非从头训练，通常收敛更快。如果你想完全从随机初始化开始，**不能只把 `checkpoint=` 清空**（它初始本来就是空的，会被后面的条件判断重新赋值），而应把 `23.pt` 移走（`mv mobvoi_kws_transcription/23.pt mobvoi_kws_transcription/23.pt.bak`）或注释掉那段 `if [ -f ... ]` 逻辑。注意该 checkpoint 的输出维度与 `num_keywords=2599` 绑定，若你修改了 `dict/words.txt` 的类别数，需要相应调整配置。
+base checkpoint 固定为 `work/downloads/mobvoi_kws_transcription/23.pt`。若要完全随机初始化，需显式传 `--checkpoint init.pt`；正常微调或续训不要使用 `init.pt`。该 checkpoint 的输出维度为 2599，修改词表时必须同步调整 `num_keywords`。
 
-### 3.2 Stage 速查
+### 3.2 外层入口速查
 
-| Stage | 作用 |
+| 入口 | 作用 |
 | :--- | :--- |
-| `-3` | 下载并解压数据集 |
-| `-2` | 生成 `wav.scp` / `text` / `dict` |
-| `-1` | （可选）负样本转写 |
-| `0` | 计算 CMVN，生成 `data.list` |
-| `1` ~ `4` | 训练主流程（初始化、训练循环、模型平均、评分与导出） |
+| `scripts/01_data/download_mobvoi.sh` | 下载并解压 MobvoiHotwords |
+| `scripts/01_data/download_mobvoi_transcription.sh` | 下载 `mobvoi_kws_transcription`（含 `23.pt` / `tokens.txt`） |
+| `scripts/01_data/prepare_mobvoi.sh` | 生成 `wav.scp` / `text` / `wav.dur` / CMVN |
+| `scripts/01_data/regenerate_data_lists.sh` | 重新生成指向 `work/` 的 `data.list` |
+| `scripts/01_data/prepare_dict.sh` | 从 `tokens.txt` 生成 `dict.txt` / `words.txt` |
+| `scripts/02_train/train_ctc.sh` | 初始微调与训练循环 |
+| `scripts/02_train/resume_ctc.sh` | 独立目录续训 |
+| `scripts/04_eval/eval_ctc.sh` | 模型平均、score、DET 与 FRR/FAR 报告 |
+| `scripts/03_export/*.sh` | 通用 ONNX / JIT 导出 |
+
+上游 `run_ctc.sh` 的 stage 编号仅作为历史参考，不再作为推荐命令。
 
 ### 3.3 显存与批次配置（首次训练前必做）
 
-`conf/ds_tcn_ctc.yaml` 中默认 `batch_size: 256`。在 14–16 GiB 显存的 GPU 上，这个规模在 CTC 的 `log_softmax` 步骤会需要一次性分配数 GiB 临时显存，**首轮即 OOM**，典型报错为：
+外层 `config/hi_xiaowen/ds_tcn_ctc.yaml` 已固定 `batch_size: 64`，并显式声明 `num_keywords: 2599`；不要修改上游 `conf/ds_tcn_ctc.yaml`。在 14–16 GiB 显存上，更大的 batch 会在 CTC `log_softmax` 阶段分配数 GiB 临时显存并触发 OOM，典型报错为：
 
 ```text
 torch.OutOfMemoryError: CUDA out of memory. Tried to allocate 3.62 GiB.
 GPU 0 has a total capacity of 14.56 GiB of which 2.37 GiB is free.
 ```
 
-**修改方法：** 编辑 `conf/ds_tcn_ctc.yaml`，找到 `batch_conf`，先把 `batch_size` 降到 32 或 64：
-
-```yaml
-dataset_conf:
-  ...
-  batch_conf:
-    batch_size: 32   # 默认 256，14–16 GiB 显存建议先设为 32
-```
-
-确认训练稳定后，可以逐步上调（64 → 96 → 128）观察显存占用，找到你这块卡的上限。batch size 变化会影响有效学习率，若大幅调低，可酌情同步下调学习率或增加梯度累积步数。
+如需调整，只改外层 yaml 的 `dataset_conf.batch_conf.batch_size`，并通过 `scripts/02_train/train_ctc.sh` 传入；确认稳定后可逐步上调，同时关注有效学习率变化。
 
 **辅助缓解显存碎片：** 如果日志中的 `reserved but unallocated memory` 偏大，可在启动训练前设置环境变量，启用可扩展内存段：
 
@@ -176,82 +160,43 @@ export PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 
 ### 3.4 启动训练
 
-数据准备完成（至少到 stage 0）且已调低 `batch_size` 后：
+数据准备完成后，直接从外层入口启动训练：
 
 ```bash
-PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-bash run_ctc.sh --stage 1 --stop_stage 4 --gpus "0"
+cd /workspace/wekws-my
+source scripts/common/env.sh
+bash scripts/02_train/train_ctc.sh --gpus 0
 ```
 
-或从 stage 0 一气呵成：
+如需指定其他 base checkpoint：
 
 ```bash
-PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-bash run_ctc.sh --stage 0 --stop_stage 4 --gpus "0"
+bash scripts/02_train/train_ctc.sh --gpus 0 --checkpoint "$MOBVOI_TRANSCRIPTION_DIR/23.pt"
 ```
 
-日志和模型默认保存在 `exp/ds_tcn_ctc/` 下。启用 `average_model=true` 时，最终用于评分或导出的通常是 `avg_30.pt`；否则为 `final.pt`。
-
-**注意 stage 1~4 是一条链：** 只有训练正常完成并产出 checkpoint，后续的模型平均（`average_model.py`）、评分（`score_ctc.py`）和导出（`export_jit.py` / `export_onnx.py`）才能依次进行。训练 OOM 会让后续步骤接连失败：模型平均因缺少验证分数报 `IndexError`，评分和导出因找不到 `avg_30.pt` 报 `FileNotFoundError`。这些是**连锁故障**，修好训练本身即可自动消失，不需要单独改脚本。
+checkpoint 写入 `$EXAMPLE_EXP`，TensorBoard 写入 `$EXAMPLE_TB`，不会回写 `wekws/`。模型平均、评分和导出由 `scripts/04_eval/eval_ctc.sh` 与 `scripts/03_export/` 独立执行；训练 OOM 导致的缺 checkpoint 是连锁故障，先修训练本身，不要改上游脚本。
 
 ### 3.5 续训：从已有 checkpoint 继续训练
 
-当训练中断，或想基于已有权重做热启动时，用 `checkpoint` 变量指向目标模型文件即可。**续训的核心是“加载权重”，不是“恢复训练现场”。**
-
-#### 操作方式
-
-**推荐做法：在脚本 stage 1 中强制覆盖 `checkpoint`。** 找到 stage 1 开头自动设置 `checkpoint` 的那段 `if [ -f "mobvoi_kws_transcription/23.pt" ]`，在其**之后**加一行：
+续训使用独立入口和配置，**不修改上游脚本**：
 
 ```bash
-checkpoint="exp/ds_tcn_ctc/0.pt"   # 换成你实际想续训的 epoch 文件
+cd /workspace/wekws-my
+source scripts/common/env.sh
+bash scripts/02_train/resume_ctc.sh \
+  --checkpoint "$EXAMPLE_EXP/avg_30.pt"
 ```
 
-然后正常启动：
+`scripts/02_train/resume_ctc.sh` 使用 `config/hi_xiaowen/ds_tcn_ctc_resume.yaml`（`lr: 0.0005`，低于基础配置的 `0.001`），输出目录为 `$WORK/exp/hi_xiaowen/ds_tcn_ctc_resume_<timestamp>`，与原始训练分离。传入 `init.pt` 会直接失败，避免 epoch 从 0 重新计数造成混淆。
 
-```bash
-PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True \
-bash run_ctc.sh --stage 1 --stop_stage 4 --gpus "0"
-```
-
-**为什么推荐改脚本而非命令行参数：** `run_ctc.sh` 使用 `parse_options.sh`，理论上支持 `--checkpoint ...` 覆盖，但由于脚本内有自动赋值逻辑，命令行传入的值可能被后续代码重新覆盖。直接改脚本最可控。
-
-**不要从 `init.pt` 续训：** `init.pt` 是训练开始时的初始权重，从它续训等同于重新开始。应选择带 epoch 编号的模型文件（如 `0.pt`、`1.pt`）。
-
-#### 续训时会发生什么
-
-| 项目 | 是否恢复 | 说明 |
-| :--- | :--- | :--- |
-| 模型权重 | ✅ | `model.state_dict()` 被加载 |
-| 优化器状态（Adam 动量等） | ❌ | 重新初始化 |
-| 学习率调度器状态 | ❌ | 从配置文件的初始 `lr` 重新开始 |
-| **epoch 计数器** | ❌ | **日志中的 `Epoch 0` 会重新出现** |
-
-**epoch 会重记：** wekws 的 `train.py` 只从 checkpoint 加载权重，不恢复训练元信息，因此训练循环从头开始，日志会再次打印 `Epoch 0 TRAIN info lr 0.001`。这不是错误——模型确实在之前权重基础上继续优化，只是编号重置了。
-
-**学习率需要手动调低：** 由于优化器状态不恢复，学习率会回到配置文件中的初始值（默认 0.001）。续训时建议在 `conf/ds_tcn_ctc.yaml` 中把 `lr` 降到 **0.0005 或 0.0001**，避免热启动后因学习率过大破坏已有权重。
-
-#### 避免日志混淆的建议
-
-epoch 编号重置会让新旧日志混在一起，难以对比。推荐**为续训创建独立实验目录**：
-
-```bash
-# 复制 checkpoint 到新目录
-mkdir -p exp/ds_tcn_ctc_resume
-cp exp/ds_tcn_ctc/0.pt exp/ds_tcn_ctc_resume/init_resume.pt
-
-# 修改 run_ctc.sh 中的 model_dir 和 checkpoint
-model_dir=exp/ds_tcn_ctc_resume
-checkpoint=exp/ds_tcn_ctc_resume/init_resume.pt
-```
-
-这样续训的日志、模型、TensorBoard 记录都是独立的，便于和原始训练对比。如果不新建目录，续训会写入同一个 `train.log`，旧日志可能被覆盖或追加。
+**续训行为：** wekws 的 `train.py` 只加载 `model.state_dict()`，不恢复优化器、调度器和 epoch 计数，因此日志可能再次出现 `Epoch 0`；这是正常现象。学习率由 resume 配置显式降低，不需要改基础配置或上游 yaml。
 
 
 ## 四、负样本策略：决定实际可用性
 
 Mobvoi 数据集提供了约 220 小时负样本，但**正负比例并非 1:1**。一个常见的失败模式是强制 1:1 训练：有开发者在自定义数据集中采用正负 1:1、负样本两万条的配置，微调后**误检率非常高**。分析指出，真实场景中负样本（日常对话、环境噪声）远多于正样本，训练集应反映这一分布，而不是人为等量平衡。
 
-**使用 `run_ctc.sh` 默认流程时，Mobvoi 的负样本是全量参与训练的，不需要手动裁剪到 1:1。** 如需进一步提升实际场景表现，可以补充**困难负样本**（近音词、相似韵律短语），扩充 `wav.scp` 和 `text` 后重新生成 `data.list`。评估时应关注验证集上的 **FPPH（每小时误唤醒次数）**；相比 loss 或准确率，它更能反映真实可用性。语音唤醒工程中，正负样本比的常见参考区间是 **1:5 到 1:10**，核心原则是让训练分布贴近部署分布。
+**使用外层 `scripts/01_data/prepare_mobvoi.sh` 时，Mobvoi 的负样本全量参与训练，不需要手动裁剪到 1:1。** 如需补充困难负样本，应更新 `$EXAMPLE_DATA/{train,dev,test}/wav.scp` 与 `text`，再执行 `scripts/01_data/regenerate_data_lists.sh`。评估时关注 FPPH（每小时误唤醒次数）；语音唤醒工程中正负样本比常见参考区间为 **1:5 到 1:10**，核心是让训练分布贴近部署分布。
 
 **一个值得注意的现象：** 如果训练 loss 长期在 40 附近震荡不降，但 CV loss 很低（如 1 以下）、CV acc 很高（80%+），这通常不是模型没学会，而是**训练集与验证集的负样本比例或难度差异很大**。训练集 filler 占比极高时，大量容易的 filler 样本把平均 loss 拉高，而验证集相对“干净”，指标自然好看。这种情况下优先检查两边的标签分布，而不是盲目调学习率。可以用下面这段脚本快速统计：
 
@@ -261,7 +206,7 @@ import json
 from collections import Counter
 for split in ['train', 'dev']:
     labels = []
-    with open(f'data/{split}/data.list') as f:
+    with open(f'/workspace/wekws-my/work/data/hi_xiaowen/{split}/data.list') as f:
         for line in f:
             labels.append(json.loads(line)['txt'])
     c = Counter(labels)
@@ -273,18 +218,23 @@ for split in ['train', 'dev']:
 
 ## 五、模型导出（ONNX）
 
-训练完成后，使用 `wekws/bin/export_onnx.py` 导出：
+训练完成后，使用外层导出脚本；参数是 `--onnx_model` / `--jit_model`，不是旧手册中的 `--output_dir`：
 
 ```bash
-exp=exp/ds_tcn_ctc   # 换成你的实验目录
-
-python -m wekws.bin.export_onnx \
-  --config $exp/train.yaml \
-  --checkpoint $exp/avg_30.pt \
-  --output_dir final.onnx
+cd /workspace/wekws-my
+source scripts/common/env.sh
+bash scripts/03_export/export_onnx.sh
+bash scripts/03_export/export_jit.sh
 ```
 
-如果未启用模型平均，将 `--checkpoint` 换成 `$exp/final.pt`。导出的 ONNX 可用于 wekws 自带的 `runtime/onnxruntime`，也支持进一步转换为 Android 或 Raspberry Pi 的部署格式。
+产物位于 `$WORK/exports/hi_xiaowen/`：`avg_30.onnx`、`avg_30.zip` 与带绝对 CMVN 路径的 `config_abs_cmvn.yaml`。Android 部署资产单独使用：
+
+```bash
+$PYTHON_BIN scripts/03_export/export_android_onnx.py \
+  --keyword_thresholds '嗨小问=0.303,你好问问=0.039'
+```
+
+Android 固定使用 `$DEPLOY_CHECKPOINT`（`avg_30.pt`），不会自动切换到更新 epoch。
 
 
 ## 六、关键排查速查
@@ -293,15 +243,16 @@ python -m wekws.bin.export_onnx \
 | :--- | :--- | :--- |
 | `AttributeError: module 'torchaudio' has no attribute 'info'` | `torchaudio` ≥ 2.9 移除了 `info` | `pip install torchaudio==2.5.1` |
 | `ImportError: TorchCodec is required` | `torchaudio.load` 在 ≥2.9 走 TorchCodec 路径 | 同上，降级 `torchaudio` |
-| `destination path 'mobvoi_kws_transcription' already exists` | 之前中断残留目录 | `rm -rf mobvoi_kws_transcription` |
-| `make_list.py` 报 `AssertionError: key in duration_table` | `wav2dur.py` 因 torchaudio 错误未产出时长 | 根因同上，修复 torchaudio 版本后重跑 stage 0 |
-| **`torch.OutOfMemoryError: CUDA out of memory`（首轮即崩）** | **`batch_size: 256` 在 ≤16 GiB 显存上过大** | **`conf/ds_tcn_ctc.yaml` 中 `batch_size` 降到 32/64；加 `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`** |
-| `average_model.py` 报 `IndexError: too many indices for array` | 训练一个 epoch 都没完成，无验证分数 | 修好 OOM 让训练正常产出 checkpoint 后自动消失 |
-| `score_ctc.py` / `export_*.py` 报 `FileNotFoundError: avg_30.pt` | 训练失败未产出平均模型 | 同上，属 OOM 的连锁故障 |
-| **续训后日志又从 `Epoch 0` 开始** | **wekws 只加载权重，不恢复 epoch 计数和优化器状态** | **正常行为；可新建实验目录避免日志混淆，学习率手动调低** |
-| **续训后 loss 突然升高** | **优化器状态未恢复，学习率回到初始值** | **在 `conf/ds_tcn_ctc.yaml` 中把 `lr` 降到 0.0005/0.0001** |
-| **训练 loss 高但 CV loss 很低、acc 很高** | **训练集与验证集负样本比例/难度差异大** | **用第四节脚本检查两边 `data.list` 标签分布，不要盲目调学习率** |
-| DataLoader worker 警告 | 16 workers > 系统建议的 8 | 将 `compute_cmvn_stats.py` 的 `--num_workers` 改为 8 |
+| `destination path 'mobvoi_kws_transcription' already exists` | 旧流程残留目录 | 不要删除；`download_mobvoi_transcription.sh` 会识别并跳过 |
+| `make_list.py` 报 `AssertionError: key in duration_table` | `wav.dur` 缺失或 torchaudio 版本错误 | 修复 torchaudio 后重跑 `scripts/01_data/prepare_mobvoi.sh` 与 `regenerate_data_lists.sh` |
+| **`torch.OutOfMemoryError: CUDA out of memory`（首轮即崩）** | batch 过大 | 修改外层 `config/hi_xiaowen/ds_tcn_ctc.yaml` 的 `batch_size`，不要改上游 yaml |
+| `average_model.py` 报 `IndexError: too many indices for array` | checkpoint/yaml 不足 30 个 | `eval_ctc.sh` 已回退到 `avg_N.pt` / `final.pt` |
+| `score_ctc.py` 报 `FileNotFoundError: data/train/global_cmvn` | 直接用了训练产物里的相对路径 config | 使用 `eval_ctc.sh` 生成的 `$RESULT_DIR/config.yaml`（绝对 CMVN 路径） |
+| `score_ctc.py` / `export_*.py` 报 `FileNotFoundError: avg_30.pt` | checkpoint 路径错误或训练失败 | 部署固定 `$DEPLOY_CHECKPOINT`；训练失败时先修训练 |
+| **续训后日志又从 `Epoch 0` 开始** | **wekws 只加载权重，不恢复 epoch 计数和优化器状态** | **正常行为；使用 `resume_ctc.sh` 的独立输出目录，学习率由 resume config 调低** |
+| **续训后 loss 突然升高** | **优化器状态未恢复** | **检查 `ds_tcn_ctc_resume.yaml` 的 `lr: 0.0005`** |
+| **训练 loss 高但 CV loss 很低、acc 很高** | **训练集与验证集负样本比例/难度差异大** | **用第四节脚本检查 `data.list` 标签分布，不要盲目调学习率** |
+| DataLoader worker 警告 | workers 超过系统建议 | 外层 `prepare_mobvoi.sh` 已使用 8 workers |
 | 误唤醒率偏高 | 负样本分布与真实场景不匹配 | 保持负样本全量参与，必要时补充困难负样本，关注 FPPH |
 
 
