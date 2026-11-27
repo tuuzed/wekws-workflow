@@ -256,7 +256,9 @@ for (FrameDebug frame : engine.frameDebug(channel, 200)) {
 }
 ```
 
-示例 UI 中增加了 `Debug` 按钮，会把当前选中 channel 的最多 200 帧 debug 信息打到日志区。
+示例 UI 中增加了 `Debug` 按钮，会把当前选中 channel 的最多 200 帧 debug 信息打到日志区：先输出 `frame debug channel=<id> frames=<n>`，随后每帧一行 `frame=<帧号> ms=<时间> raw=[...] kept=[...]`。
+
+按钮只读取已有的 `frame_debug` buffer，与录音状态无关（Engine 初始化失败时才禁用），输出是追加到日志区而非清空日志；它不改变 score、阈值或检测结果。`resetChannel()` 会清空该 channel 的 `frame_debug`，因此重置后（或 `dump_frame_topk=false` 时）点击按钮会得到 `frames=0`。
 
 ## 注意事项
 

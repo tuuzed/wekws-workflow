@@ -413,7 +413,7 @@ LD_LIBRARY_PATH=build_host ./build_host/kws_host_cli \
   --debug_json /tmp/android_debug.json
 ```
 
-其中 `/tmp/kws_config_debug.json` 是把 `config.json` 的 `debug.dump_frame_topk` 改为 `true` 的副本。Java 侧通过 `engine.frameDebug(channel, 200)` 读取，`MainActivity` 的 `Debug` 按钮会打印当前 channel 最多 200 帧。
+其中 `/tmp/kws_config_debug.json` 是把 `config.json` 的 `debug.dump_frame_topk` 改为 `true` 的副本。Java 侧通过 `engine.frameDebug(channel, 200)` 读取，`MainActivity` 的 `Debug` 按钮会打印当前 channel 最多 200 帧。按钮输出追加到日志区（先 `frame debug channel=<id> frames=<n>`，再逐帧 `frame=<帧号> ms=<时间> raw=[...] kept=[...]`），只读取 buffer、不改变推理；`resetChannel()` 会清空该 channel 的 `frame_debug`，所以重置后或未开启 `dump_frame_topk` 时点击按钮显示 `frames=0`。
 
 ---
 
