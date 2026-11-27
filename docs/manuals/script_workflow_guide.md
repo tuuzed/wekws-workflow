@@ -400,6 +400,7 @@ android/app/src/main/assets/id_to_token.json
 | score | `sqrt(∏ token_prob)`，与 `score_ctc.py` 一致 |
 | 阈值 | per-keyword `trigger_threshold`；同一 channel 可同时上报多个关键词，Engine 不仲裁 |
 | 事件语义 | `currentEvents()` 保存当前 beam 中最近一次命中的事件，不是历史最高分 |
+| Android Events 面板 | 展示 `currentEvents()` 完整字段：`channel`、`keyword`、`score`、`start_ms`、`end_ms`，并逐行列出 `token_probs` 的 `token`、`token_id`、`frame`、`prob`；不展示阈值或 cooldown 字段 |
 | 调试字段 | `token_probs` / `frame_topk` 只用于观察概率与逐帧 top-k，不参与 score、阈值、检测结果或 `score_file` 格式 |
 
 ---

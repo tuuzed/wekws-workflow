@@ -495,8 +495,9 @@ UI 线程:       读取/展示 currentEvents()
 
 - `kws-record` 采集线程，当前 demo **只创建一个 `AudioRecord`**，采集 spinner 选中的一路；
 - `kws-decode` 单 decode 线程：`decodeOnce()` 后每 100 ms 调用一次 `currentEvents()`，事件泵只刷新 `Events:` 面板，不逐帧追加日志；
+- `Events:` 面板按多行块展示 Native 完整字段：`channel`、`keyword`、`score`、`start_ms`、`end_ms`，并逐行列出 `token_probs` 的 `token`、`token_id`、`frame`、`prob`；事件区有独立滚动容器和卡片式背景；
 - 停止录音时先对所有 channel 调用 `finish()`，再 final drain 并把同一行的状态从 `live` 标记为 `final`，最后才 `resetChannel()`；
-- live/final 按 `channel/keyword/startMs/endMs` 作为签名维护一张表：同一签名刷新分数，不新增行；同一 channel 的多个关键词各自占一行，UI 不仲裁；
+- live/final 按 `channel/keyword/startMs/endMs` 作为签名维护一张表：同一签名刷新完整字段，不新增行；同一 channel 的多个关键词各自占一行，UI 不仲裁；
 - UI 更新统一通过 `uiHandler.post()` 回到主线程；
 - `Debug` 按钮读取当前选中 channel 的逐帧 top-k 并打到日志区。
 

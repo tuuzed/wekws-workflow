@@ -9,6 +9,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="Haibingtech KWS (ONNX, multi-channel)"
+        android:textColor="#111827"
         android:textSize="18sp"
         android:textStyle="bold" />
 
@@ -52,26 +53,67 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="12dp"
-        android:text="Idle" />
+        android:background="@drawable/panel_background"
+        android:padding="10dp"
+        android:text="Idle"
+        android:textColor="#374151"
+        android:textSize="14sp" />
 
     <TextView
-        android:id="@+id/eventView"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
+        android:layout_marginTop="12dp"
+        android:text="事件 / Events"
+        android:textColor="#374151"
         android:textSize="14sp"
-        android:text="Events: (none)" />
+        android:textStyle="bold" />
 
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1"
-        android:layout_marginTop="8dp">
+        android:layout_weight="3"
+        android:layout_marginTop="6dp"
+        android:background="@drawable/panel_background"
+        android:fadeScrollbars="false"
+        android:padding="12dp"
+        android:scrollbars="vertical">
+
+        <TextView
+            android:id="@+id/eventView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:lineSpacingExtra="2dp"
+            android:text="Events: (none)"
+            android:textColor="#1F2937"
+            android:textSize="14sp" />
+
+    </ScrollView>
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:text="日志 / Log"
+        android:textColor="#374151"
+        android:textSize="14sp"
+        android:textStyle="bold" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="2"
+        android:layout_marginTop="6dp"
+        android:background="@drawable/panel_background"
+        android:fadeScrollbars="false"
+        android:padding="12dp"
+        android:scrollbars="vertical">
 
         <TextView
             android:id="@+id/logView"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
+            android:lineSpacingExtra="1dp"
+            android:textColor="#4B5563"
             android:textSize="13sp" />
 
     </ScrollView>

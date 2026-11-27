@@ -6,6 +6,7 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /** One token probability from the winning CTC keyword path. */
 public final class TokenProb {
@@ -35,6 +36,13 @@ public final class TokenProb {
                     (float) item.getDouble("prob")));
         }
         return result;
+    }
+
+    /** Single-line representation used by the Android Events panel. */
+    public String formatForEventsPanel() {
+        return String.format(Locale.US,
+                "token=%s  token_id=%d  frame=%d  prob=%.6f",
+                token, tokenId, frame, prob);
     }
 
     @Override

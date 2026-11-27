@@ -20,7 +20,6 @@ import org.json.JSONException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Locale;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
@@ -278,7 +277,7 @@ public class MainActivity extends Activity {
                 if (previous == null) {
                     liveEvents.put(signature, new LiveEvent(event, finalFlush));
                 } else {
-                    // Same event, possibly refined: refresh the score in place.
+                    // Same event, possibly refined: refresh all event fields in place.
                     previous.event = event;
                     if (finalFlush) {
                         previous.finalEvent = true;
@@ -301,15 +300,10 @@ public class MainActivity extends Activity {
         synchronized (liveEvents) {
             text.append("Events (").append(liveEvents.size()).append("):");
             for (Map.Entry<String, LiveEvent> item : liveEvents.entrySet()) {
-                DetectionEvent event = item.getValue().event;
-                text.append("\n")
+                text.append("\n\n")
                         .append(item.getValue().finalEvent ? "final" : "live")
-                        .append(" ch=").append(event.channel)
-                        .append(" ").append(event.keyword)
-                        .append(" score=")
-                        .append(String.format(Locale.US, "%.6f", event.score))
-                        .append(" ").append(event.startMs).append("-")
-                        .append(event.endMs).append("ms");
+                        .append(" ")
+                        .append(item.getValue().event.formatForEventsPanel());
             }
         }
         uiHandler.post(new Runnable() {

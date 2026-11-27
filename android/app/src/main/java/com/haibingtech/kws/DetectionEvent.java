@@ -6,6 +6,7 @@ import org.json.JSONObject;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /** One keyword detection returned by the native engine. */
 public final class DetectionEvent {
@@ -42,6 +43,22 @@ public final class DetectionEvent {
                     TokenProb.fromJson(item.optJSONArray("token_probs"))));
         }
         return events;
+    }
+
+    /** Multi-line representation used by the Android Events panel. */
+    public String formatForEventsPanel() {
+        StringBuilder text = new StringBuilder();
+        text.append("channel=").append(channel)
+                .append("  keyword=").append(keyword)
+                .append("\nscore=")
+                .append(String.format(Locale.US, "%.6f", score))
+                .append("  start_ms=").append(startMs)
+                .append("  end_ms=").append(endMs)
+                .append("\ntoken_probs:");
+        for (TokenProb token : tokenProbs) {
+            text.append("\n  ").append(token.formatForEventsPanel());
+        }
+        return text.toString();
     }
 
     @Override
