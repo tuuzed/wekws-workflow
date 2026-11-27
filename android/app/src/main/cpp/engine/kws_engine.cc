@@ -72,7 +72,8 @@ KwsEngine::KwsEngine(const std::string& model_path, const RuntimeConfig& config,
   feature_config.frame_shift_ms = config_.frame_shift_ms;
 
   for (int c = 0; c < channels_; ++c) {
-    states_.emplace_back(new ChannelState(feature_config));
+    states_.emplace_back(
+        new ChannelState(feature_config, config_.keywords.size()));
     ChannelState& state = *states_.back();
     state.decoder.reset(new CtcBeamSearch(config_.ctc, config_.keywords));
     state.cache.assign(
@@ -216,10 +217,26 @@ bool KwsEngine::DecodeOnce() {
       // the final beam; Python/score_ctc.py reports the current beam hit.
       // Do not clear an old hit when the keyword temporarily drops out, so a
       // multi-keyword stream can still report earlier keywords.
+      bool triggered = false;
       for (size_t k = 0; k < hits.size(); ++k) {
         if (hits[k].keyword.empty()) continue;
+        if (hits[k].score < config_.keywords[k].trigger_threshold) continue;
+        const int64_t now_ms =
+            static_cast<int64_t>(hits[k].end_frame) * frame_shift_ms_;
+        if (config_.ctc.cooldown_ms > 0 && state.last_trigger_ms[k] >= 0 &&
+            now_ms - state.last_trigger_ms[k] < config_.ctc.cooldown_ms) {
+          continue;
+        }
         best_hits_[c][k] = hits[k];
         has_hit_[c][k] = true;
+        state.last_trigger_ms[k] = now_ms;
+        triggered = true;
+      }
+      if (triggered) {
+        if (config_.ctc.reset_decoder_after_trigger) state.decoder->Reset();
+        if (config_.ctc.reset_cache_after_trigger) {
+          std::fill(state.cache.begin(), state.cache.end(), 0.0f);
+        }
       }
     }
     state.frame_offset += frames;
@@ -280,7 +297,8 @@ void KwsEngine::ResetChannel(int channel) {
   state.frame_debug.clear();
   std::fill(state.cache.begin(), state.cache.end(), 0.0f);
   state.frame_offset = 0;
-  state.last_trigger_ms = -1;
+  std::fill(state.last_trigger_ms.begin(), state.last_trigger_ms.end(),
+            static_cast<int64_t>(-1));
   std::fill(has_hit_[channel].begin(), has_hit_[channel].end(), false);
   std::fill(best_hits_[channel].begin(), best_hits_[channel].end(),
             KeywordHit());

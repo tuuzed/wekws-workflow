@@ -81,7 +81,7 @@ public final class KwsEngine implements AutoCloseable {
         return KwsJni.decodeOnce(handle);
     }
 
-    /** Best hit currently held for each channel, above the trigger threshold. */
+    /** Current-beam hit per channel/keyword above its own trigger threshold. */
     public List<DetectionEvent> currentEvents() throws JSONException {
         ensureOpen();
         return DetectionEvent.fromJson(KwsJni.currentEventsJson(handle));

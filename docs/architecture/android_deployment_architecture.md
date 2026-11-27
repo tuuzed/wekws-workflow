@@ -491,14 +491,16 @@ decode 单线程: while (running) engine.decodeOnce()
 UI 线程:       读取/展示 currentEvents()
 ```
 
-`MainActivity` 中已有：
+`MainActivity`（包名 `com.haibingtech.kws`）中已有：
 
-- `kws-record` 采集线程，当前 demo 只采集 spinner 选中的一路；
-- `kws-decode` 单 decode 线程；
-- UI 通过 `Handler` 展示事件；
+- `kws-record` 采集线程，当前 demo **只创建一个 `AudioRecord`**，采集 spinner 选中的一路；
+- `kws-decode` 单 decode 线程：`decodeOnce()` 后每 100 ms 调用一次 `currentEvents()`，事件泵只刷新 `Events:` 面板，不逐帧追加日志；
+- 停止录音时先对所有 channel 调用 `finish()`，再 final drain 并把同一行的状态从 `live` 标记为 `final`，最后才 `resetChannel()`；
+- live/final 按 `channel/keyword/startMs/endMs` 作为签名维护一张表：同一签名刷新分数，不新增行；同一 channel 的多个关键词各自占一行，UI 不仲裁；
+- UI 更新统一通过 `uiHandler.post()` 回到主线程；
 - `Debug` 按钮读取当前选中 channel 的逐帧 top-k 并打到日志区。
 
-真实多路采集时，业务层需要为每路独立 PCM 调用 `feed(channel, ...)`。
+本 demo 只增加 UI 事件泵并展示 Native 已有的 `currentEvents()`；不新增 `AudioRecord`、不扩展真实多路采集。真实多路采集时，业务层需要为每路独立 PCM 调用 `feed(channel, ...)`，Native 的单 ORT Session / 单 decode 线程 / 每 channel 独立 mutex、frontend、cache、decoder、offset 模型保持不变。
 
 ---
 
@@ -559,7 +561,12 @@ UI 线程:       读取/展示 currentEvents()
 
 - `keywords[].trigger_threshold` 是必填字段，缺失时配置解析失败；
 - 每个关键词使用自己的阈值，只控制是否上报，不改变 score；
-- `cooldown_ms` / `reset_decoder_after_trigger` / `reset_cache_after_trigger` 是当前 best-hit 口径下的预留字段，不参与 score 计算；
+- `cooldown_ms` / `reset_decoder_after_trigger` / `reset_cache_after_trigger` 是**实际生效的运行时触发控制**（Native 与 Python/WebUI 共用同一规则），不参与 `sqrt(∏ token_prob)` 公式本身：
+  - `cooldown_ms` 按 channel / 关键词抑制窗口内重复事件；其他关键词不受影响；
+  - `reset_decoder_after_trigger=true` 在过阈值命中后立即清空该 channel 的 CTC beam；
+  - `reset_cache_after_trigger=true` 在过阈值命中后清零该 channel 的 ONNX cache；
+  - 因此受控事件分数可能停在首次过阈值的 beam：`ch_nihao.wav` 的 baseline 锚点是 `0.224239 / 63-125`，默认受控事件是 `0.088598 / 63-107`。这是观察时机变化，不是 score 口径变化；
+  - host CLI、WebUI 与 Android 都按 100 ms PCM 块解码，保证 cache reset 发生在相同 chunk 边界；
 - `intra_op_threads` / `inter_op_threads` 当前设为 1，避免移动端多线程调度带来的延迟抖动；
 - `debug.dump_frame_topk` 默认关闭，开启后才会填充每路 `frame_debug`，不影响 score 与事件输出。
 

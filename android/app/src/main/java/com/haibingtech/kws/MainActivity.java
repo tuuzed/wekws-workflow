@@ -18,9 +18,10 @@ import android.widget.TextView;
 import org.json.JSONException;
 
 import java.util.ArrayList;
-import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
-import java.util.Set;
+import java.util.Locale;
+import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
@@ -35,9 +36,23 @@ public class MainActivity extends Activity {
     private static final int REQUEST_RECORD_AUDIO = 1;
     private static final int SAMPLE_RATE = 16000;
     private static final int CHUNK_SAMPLES = 1600; // 100 ms
+    private static final long EVENT_DRAIN_INTERVAL_MS = 100;
+
+    private static final class LiveEvent {
+        DetectionEvent event;
+        boolean finalEvent;
+
+        LiveEvent(DetectionEvent event, boolean finalEvent) {
+            this.event = event;
+            this.finalEvent = finalEvent;
+        }
+    }
 
     private final AtomicBoolean running = new AtomicBoolean(false);
-    private final Set<String> seenEvents = new HashSet<>();
+    // Key: channel/keyword/startMs/endMs. One row per event signature; the
+    // score is refreshed in place instead of appending every decode frame.
+    private final Map<String, LiveEvent> liveEvents = new LinkedHashMap<>();
+    private long lastEventDrainMs = 0;
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
 
     private KwsEngine engine;
@@ -45,6 +60,7 @@ public class MainActivity extends Activity {
     private Thread recordThread;
     private Thread decodeThread;
     private TextView statusView;
+    private TextView eventView;
     private TextView logView;
     private Spinner channelSpinner;
     private Button startButton;
@@ -57,6 +73,7 @@ public class MainActivity extends Activity {
         setContentView(R.layout.activity_main);
 
         statusView = findViewById(R.id.statusView);
+        eventView = findViewById(R.id.eventView);
         logView = findViewById(R.id.logView);
         channelSpinner = findViewById(R.id.channelSpinner);
         startButton = findViewById(R.id.startButton);
@@ -128,7 +145,11 @@ public class MainActivity extends Activity {
         if (engine == null || !running.compareAndSet(false, true)) {
             return;
         }
-        seenEvents.clear();
+        synchronized (liveEvents) {
+            liveEvents.clear();
+        }
+        lastEventDrainMs = 0;
+        renderEvents();
         for (int c = 0; c < engine.channels(); ++c) {
             engine.resetChannel(c);
         }
@@ -166,7 +187,9 @@ public class MainActivity extends Activity {
                 engine.finish(c);
             }
             try {
-                drainEvents();
+                // Finish() first so the final beam is flushed; then mark every
+                // row final before ResetChannel() clears native event state.
+                drainEvents(true);
             } catch (JSONException e) {
                 appendLog("drain error: " + e.getMessage());
             }
@@ -220,9 +243,20 @@ public class MainActivity extends Activity {
     private void decodeLoop() {
         while (running.get()) {
             try {
-                // Keep decoding during capture. Exact scores are reported after
-                // Finish(), when the beam search has seen all frames.
-                if (!engine.decodeOnce()) {
+                // Keep decoding during capture and pull events periodically so
+                // the UI shows live hits without waiting for Stop. The score is
+                // still refined until Finish() flushes the final beam.
+                boolean decoded = engine.decodeOnce();
+                long now = System.currentTimeMillis();
+                if (now - lastEventDrainMs >= EVENT_DRAIN_INTERVAL_MS) {
+                    try {
+                        drainEvents(false);
+                        lastEventDrainMs = now;
+                    } catch (JSONException e) {
+                        appendLog("drain error: " + e.getMessage());
+                    }
+                }
+                if (!decoded) {
                     Thread.sleep(5);
                 }
             } catch (InterruptedException e) {
@@ -235,14 +269,55 @@ public class MainActivity extends Activity {
         }
     }
 
-    private void drainEvents() throws JSONException {
+    private void drainEvents(final boolean finalFlush) throws JSONException {
         for (DetectionEvent event : engine.currentEvents()) {
             String signature = event.channel + "/" + event.keyword + "/"
                     + event.startMs + "/" + event.endMs;
-            if (seenEvents.add(signature)) {
-                appendLog(event.toString());
+            synchronized (liveEvents) {
+                LiveEvent previous = liveEvents.get(signature);
+                if (previous == null) {
+                    liveEvents.put(signature, new LiveEvent(event, finalFlush));
+                } else {
+                    // Same event, possibly refined: refresh the score in place.
+                    previous.event = event;
+                    if (finalFlush) {
+                        previous.finalEvent = true;
+                    }
+                }
             }
         }
+        if (finalFlush) {
+            synchronized (liveEvents) {
+                for (LiveEvent item : liveEvents.values()) {
+                    item.finalEvent = true;
+                }
+            }
+        }
+        renderEvents();
+    }
+
+    private void renderEvents() {
+        final StringBuilder text = new StringBuilder();
+        synchronized (liveEvents) {
+            text.append("Events (").append(liveEvents.size()).append("):");
+            for (Map.Entry<String, LiveEvent> item : liveEvents.entrySet()) {
+                DetectionEvent event = item.getValue().event;
+                text.append("\n")
+                        .append(item.getValue().finalEvent ? "final" : "live")
+                        .append(" ch=").append(event.channel)
+                        .append(" ").append(event.keyword)
+                        .append(" score=")
+                        .append(String.format(Locale.US, "%.6f", event.score))
+                        .append(" ").append(event.startMs).append("-")
+                        .append(event.endMs).append("ms");
+            }
+        }
+        uiHandler.post(new Runnable() {
+            @Override
+            public void run() {
+                eventView.setText(text.toString());
+            }
+        });
     }
 
     private void dumpFrameDebug() {

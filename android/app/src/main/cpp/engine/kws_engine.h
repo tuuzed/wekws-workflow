@@ -51,9 +51,10 @@ class KwsEngine {
   bool DecodeOnce();
   std::vector<DetectionEvent> DecodeAll();
 
-  // Best hit seen so far for each channel/keyword pair. Scores are refined
-  // while more frames arrive, so the final value matches the offline Python
-  // score. Every hit passing its own keyword threshold is returned.
+  // Most recent hit still present in the current beam for each channel/keyword
+  // pair. This is not the historical maximum: a high score can disappear from
+  // the beam as decoding continues. Every hit passing its own keyword
+  // threshold is returned; the engine never arbitrates between keywords.
   std::vector<DetectionEvent> CurrentEvents() const;
 
   // Debug buffer of per-frame top-k posterior values for one channel.
@@ -67,8 +68,8 @@ class KwsEngine {
 
  private:
   struct ChannelState {
-    explicit ChannelState(const FeatureConfig& feature_config)
-        : frontend(feature_config) {}
+    ChannelState(const FeatureConfig& feature_config, size_t num_keywords)
+        : frontend(feature_config), last_trigger_ms(num_keywords, -1) {}
 
     mutable std::mutex mutex;
     FeaturePipeline frontend;
@@ -76,7 +77,8 @@ class KwsEngine {
     std::vector<float> cache;
     std::vector<FrameDebug> frame_debug;
     int frame_offset = 0;
-    int64_t last_trigger_ms = -1;
+    // Per-keyword cooldown clock, indexed by config_.keywords position.
+    std::vector<int64_t> last_trigger_ms;
   };
 
   RuntimeConfig config_;

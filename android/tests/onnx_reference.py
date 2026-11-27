@@ -13,18 +13,16 @@ import onnxruntime as ort
 import soundfile as sf
 import torch
 import torchaudio
-import yaml
 
 ANDROID_ROOT = Path(__file__).resolve().parents[1]
 REPO_ROOT = ANDROID_ROOT.parent / "wekws"
 WORK_ROOT = ANDROID_ROOT.parent / "work"
+SCRIPTS_ROOT = ANDROID_ROOT.parent / "scripts/04_eval"
 sys.path.insert(0, str(ANDROID_ROOT.parent))
 sys.path.insert(0, str(ANDROID_ROOT))
 sys.path.insert(0, str(REPO_ROOT))
+sys.path.insert(0, str(SCRIPTS_ROOT))
 
-from wekws.model.kws_model import init_model  # noqa: E402
-from wekws.model.loss import ctc_prefix_beam_search  # noqa: E402
-from wekws.utils.checkpoint import load_checkpoint  # noqa: E402
 
 
 def is_sublist(main_list, check_list):
@@ -42,6 +40,8 @@ def is_sublist(main_list, check_list):
 
 
 def python_score(probs, token_set, keywords):
+    from wekws.model.loss import ctc_prefix_beam_search
+
     hyps = ctc_prefix_beam_search(torch.from_numpy(probs), torch.tensor([probs.shape[0]]),
                                   set(token_set))
     for hyp in hyps:
@@ -75,6 +75,8 @@ def get_args():
                         default=str(WORK_ROOT / "exp/hi_xiaowen/ds_tcn_ctc/config.yaml"))
     parser.add_argument("--checkpoint", default=None)
     parser.add_argument("--out_dir", default=str(ANDROID_ROOT / "tests/out"))
+    parser.add_argument("--onnx_only", action="store_true",
+                        help="skip train CMVN and PyTorch checkpoint comparison")
     return parser.parse_args()
 
 
@@ -105,8 +107,12 @@ def main():
 
     with open(args.config_json, "r", encoding="utf-8") as fin:
         runtime_config = json.load(fin)
-    with open(args.train_config, "r", encoding="utf-8") as fin:
-        train_config = yaml.load(fin, Loader=yaml.FullLoader)
+    train_config = None
+    if not args.onnx_only:
+        import yaml
+
+        with open(args.train_config, "r", encoding="utf-8") as fin:
+            train_config = yaml.load(fin, Loader=yaml.FullLoader)
 
     # torchaudio.load() returns normalized float, then processor.py multiplies
     # by (1 << 15). soundfile with dtype=float32 gives the same normalization.
@@ -150,10 +156,38 @@ def main():
     print("onnx probs shape:", probs.shape)
     print("python score:", json.dumps(ref, ensure_ascii=False))
 
+    # WebUI uses the same streaming core (scripts/04_eval/onnx_kws_core.py).
+    # Report both baseline (trigger control off) and deployed (default) so the
+    # score anchor and the post-reset event can be compared side by side.
+    from onnx_kws_core import OnnxKwsRuntime
+
+    for baseline in (True, False):
+        runtime = OnnxKwsRuntime(config_json=args.config_json,
+                                 onnx_path=args.onnx, baseline=baseline)
+        stream = runtime.new_stream(0)
+        chunk = runtime.config.sample_rate // 10
+        for offset in range(0, len(pcm), chunk):
+            stream.accept_float_audio(pcm[offset:offset + chunk])
+            runtime.decode_once([stream])
+        stream.finish()
+        runtime.decode_all([stream])
+        events = [{
+            "keyword": event["keyword"],
+            "score": round(float(event["score"]), 6),
+            "start_frame": event["start_frame"],
+            "end_frame": event["end_frame"],
+        } for event in stream.current_events()]
+        mode = "baseline" if baseline else "deployed"
+        print(f"python streaming core ({mode}):",
+              json.dumps(events, ensure_ascii=False))
+
     # Compare ONNX output to the PyTorch checkpoint when available.
     checkpoint = args.checkpoint
-    if checkpoint:
+    if checkpoint and not args.onnx_only:
         import copy
+        from wekws.model.kws_model import init_model
+        from wekws.utils.checkpoint import load_checkpoint
+
         train_config = copy.deepcopy(train_config)
         cmvn = train_config["model"].get("cmvn")
         if cmvn and cmvn.get("cmvn_file"):

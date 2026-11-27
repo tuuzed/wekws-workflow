@@ -118,6 +118,18 @@ int main(int argc, char** argv) {
       for (int c = 0; c < channels; ++c) {
         engine.AcceptWaveform(c, pcm[c].data(), pcm[c].size());
       }
+      // Decode after every 100 ms chunk, matching WebUI streaming and Android
+      // decodeLoop(). Cache resets after a trigger therefore happen at the same
+      // chunk boundaries in every runtime.
+      while (engine.DecodeOnce()) {
+        const std::vector<haibingtech::kws::DetectionEvent> chunk_events =
+            engine.CurrentEvents();
+        for (const auto& event : chunk_events) {
+          std::cerr << "chunk ch=" << event.channel << " " << event.keyword
+                    << " score=" << event.score << " " << event.start_frame
+                    << "-" << event.end_frame << std::endl;
+        }
+      }
     }
     for (int c = 0; c < channels; ++c) engine.Finish(c);
 

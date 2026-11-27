@@ -366,7 +366,7 @@ sqrt(∏ token_prob)
 - 每个关键词使用自己的 `trigger_threshold`；
 - 同一 channel 可以同时返回多个关键词事件，Engine 不做仲裁；
 - 不维护“触发即上报”的实时事件队列；
-- `cooldown_ms` 等字段目前是预留字段，不参与 score 计算。
+- `cooldown_ms` / `reset_decoder_after_trigger` / `reset_cache_after_trigger` 已在 Native 与 WebUI 运行时生效，但只控制事件节奏与 beam/cache 生命周期，不改变 `sqrt(∏ token_prob)` 公式；命中后立即 reset 会让事件分数停在首次过阈值的 beam。
 
 如果产品上存在多个自定义词，可由使用方自行仲裁：
 

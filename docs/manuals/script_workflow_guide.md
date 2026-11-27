@@ -203,9 +203,77 @@ bash scripts/02_train/resume_ctc.sh \
 | `79.pt` | `epoch: 79`、`lr: 1.0e-06` | `start_epoch=80`；现有 resume config 的 `max_epoch: 80` 会使训练循环不执行 |
 | `init.pt` | `{}` | 脚本直接拒绝 |
 
-若要从 `79.pt` 之后真正继续，不能直接用现有 resume config：需要用 `--config` 传一份把 `max_epoch` 提到大于 80 的新配置；同时同名 yaml 的 `lr: 1.0e-06` 会覆盖配置里的 lr，可行做法是把 `79.pt` 复制成新文件名并配套同名 yaml（例如 `epoch: 79`、`lr: 0.0005`），再用新文件作为 `--checkpoint`。优化器和调度器状态仍不会恢复。
+若要从 `79.pt` 之后真正继续，不能直接用现有 resume config：需要用 `--config` 传一份把 `max_epoch` 提到大于 80 的新配置；同时同名 yaml 的 `lr: 1.0e-06` 会覆盖配置里的 lr，可行做法是把 `79.pt` 复制成新文件名并配套同名 yaml（例如 `epoch: 79`、`lr: 0.0005`），再用新文件作为 `--checkpoint`。优化器和调度器状态仍不会恢复。完整 N=3 操作见 §3.4。
 
 不要把 `train_ctc.sh` 的 `--checkpoint` 指向这些归档：它默认写入 `$EXAMPLE_EXP` 并使用 lr `0.001` 的基础配置，会覆盖部署产物。
+
+### 3.4 从 `79.pt` 续训 3 个 epoch 并重新取 avg 30
+
+场景：在 `79.pt` 的基础上继续训练 3 个 epoch，再把旧 `0..79` 与新增 `80..82` 一起按 `cv_loss` 选 30 个 epoch 平均。沿用 `79.yaml` 的 `lr: 1.0e-06`，不修改归档元数据。
+
+1. 复制 `config/hi_xiaowen/ds_tcn_ctc_resume.yaml` 为 `config/hi_xiaowen/ds_tcn_ctc_extend79.yaml`，只把 `training_config.max_epoch` 改为 `82`（79 + 3）。`optim_conf.lr` 无需调整：训练时 `79.yaml` 的 `lr` 会覆盖配置值。
+
+2. 续训必须走 `resume_ctc.sh`，并写入独立目录：
+
+```bash
+source scripts/common/env.sh
+
+# 先预览
+DRY_RUN=1 bash scripts/02_train/resume_ctc.sh \
+  --config config/hi_xiaowen/ds_tcn_ctc_extend79.yaml \
+  --checkpoint "$EXAMPLE_EXP/79.pt" \
+  --model_dir "$WORK/exp/hi_xiaowen/ds_tcn_ctc_extend79" \
+  --tensorboard_dir "$WORK/tensorboard/hi_xiaowen/ds_tcn_ctc_extend79" \
+  --gpus 0
+
+# 实际执行
+bash scripts/02_train/resume_ctc.sh \
+  --config config/hi_xiaowen/ds_tcn_ctc_extend79.yaml \
+  --checkpoint "$EXAMPLE_EXP/79.pt" \
+  --model_dir "$WORK/exp/hi_xiaowen/ds_tcn_ctc_extend79" \
+  --tensorboard_dir "$WORK/tensorboard/hi_xiaowen/ds_tcn_ctc_extend79" \
+  --gpus 0
+```
+
+- 日志应从 `Epoch 80` 开始、`Epoch 82` 结束；新目录生成 `80.pt/80.yaml`、`81.pt/81.yaml`、`82.pt/82.yaml`，`final.pt -> 82.pt`。
+- 不要用 `train_ctc.sh` 指向 `79.pt`：它默认写 `$EXAMPLE_EXP`，并使用 lr `0.001` 的基础配置。
+- 若要把 lr 改成 `0.0005`，不要修改 `$EXAMPLE_EXP/79.yaml`：复制 `79.pt`/`79.yaml` 到独立目录，只改副本中的 `lr`，再用副本作为 `--checkpoint`。
+
+3. 重新取 avg 30（旧 `0..79` + 新 `80..82` 一起参与；用符号链接 staging，不动原训练目录）：
+
+```bash
+source scripts/common/env.sh
+NEW="$WORK/exp/hi_xiaowen/ds_tcn_ctc_extend79"
+AVG_SRC="$WORK/exp/hi_xiaowen/avg_src_extend79"
+mkdir -p "$AVG_SRC"
+
+# 旧 0..79
+ln -s "$EXAMPLE_EXP"/[0-9]*.pt  "$EXAMPLE_EXP"/[0-9]*.yaml  "$AVG_SRC"/
+
+# 新增 80..82
+ln -s "$NEW"/8[0-2].pt "$NEW"/8[0-2].yaml "$AVG_SRC"/
+
+"$PYTHON_BIN" -m wekws.bin.average_model \
+  --src_path "$AVG_SRC" \
+  --num 30 \
+  --val_best \
+  --dst_model "$NEW/avg_30.pt"
+```
+
+- staging 中共 83 对 `.pt/.yaml`；`--val_best` 按 `cv_loss` 选最低 30 个。`init.yaml` 被 glob `[!config]*.yaml` 排除，不参与选择。
+- 必须核对打印的 `selected epochs`；`80..82` 是否入选取决于它们的 `cv_loss`，不是必然。
+- 旧 `$EXAMPLE_EXP/avg_30.pt` 与 `$DEPLOY_CHECKPOINT` 均不改变，部署不会自动切换到新模型；新文件在 `$NEW/avg_30.pt`。
+
+4. 评估与上线前检查：
+
+```bash
+RESULT_DIR="$WORK/eval/avg_30_extend79" bash scripts/04_eval/eval_ctc.sh \
+  --checkpoint "$WORK/exp/hi_xiaowen/ds_tcn_ctc_extend79/avg_30.pt" \
+  --result_dir "$WORK/eval/avg_30_extend79"
+```
+
+- `eval_ctc.sh` 会固定重写 `docs/evaluation/avg30_frr_far_report.md`，且报告里的 `0.303 / 0.039` 是旧工作点硬编码；新 checkpoint 必须重新按 `FAR ≤ 0.2/h` 选阈值，不能直接沿用。
+- 若要上线，导出 Android 时显式传 `--checkpoint "$NEW/avg_30.pt"` 和新阈值（导出脚本默认 checkpoint 固定为旧 `$DEPLOY_CHECKPOINT`）；先备份 `android/app/src/main/assets/`，再跑 ONNX/Native 对齐验证。
 
 ---
 
@@ -374,7 +442,27 @@ source scripts/common/env.sh
 $PYTHON_BIN scripts/04_eval/infer_webui.py --checkpoint avg_30.pt --port 7860
 ```
 
-浏览器访问 `http://127.0.0.1:7860`。WebUI 可选择 `avg_30.pt`、命名 checkpoint 或 epoch checkpoint，并可打开逐帧 top-k 调试；检测结果中的 token 概率同 CLI。
+浏览器访问 `http://127.0.0.1:7860`。也可用根目录兼容 wrapper：`$PYTHON_BIN infer_webui.py --checkpoint avg_30.pt --port 7860`。麦克风权限：浏览器首次使用麦克风会弹出授权提示，需允许；服务绑定 `127.0.0.1`，通过 `http://` 访问即可（非 HTTPS 域名下浏览器会禁用麦克风）。
+
+页面顶部是全局「推理后端（全局）」选择器，下方按 Tab 分区：
+
+| Tab | 输入 | 说明 |
+|---|---|---|
+| `上传检测` | 上传音频或点击麦克风录音 | 左侧上传/录音，录完点「开始检测」，右侧显示结果；运行日志在默认折叠的「运行日志」里。默认 ONNX 后端会隐藏 PyTorch 专用设置，切到 PyTorch 后展开「PyTorch 设置（关键词 / checkpoint / top-k）」 |
+| `麦克风流式` | 麦克风（浏览器通常 48 kHz，自动转 16 kHz） | 仅 ONNX 后端可用；录音中实时刷新 live 事件，停止后点「结束并生成 final」；流式日志默认折叠 |
+
+WebUI 顶部后端选择器的两种后端：
+
+| 后端 | 输入 | 说明 |
+|---|---|---|
+| `Android ONNX（部署口径，流式）`（默认） | 上传音频按 100 ms 分块跑流式；麦克风按块实时识别 | 直接加载 `assets/kws.onnx` + `assets/config.json`，阈值取每个关键词的 `trigger_threshold`；不使用 PyTorch checkpoint |
+| `PyTorch（整段检测）` | 上传整段音频 | 原有 `KwsEngine.detect()` 路径，checkpoint 可选 `avg_30.pt`、命名或 epoch checkpoint，支持逐帧 top-k 调试 |
+
+两种后端检测结果中的 token 概率同 CLI。`Android ONNX` 后端细节见 [ONNX 流式后端使用说明](onnx_streaming_backend.md)。
+
+采样率与录音格式：浏览器麦克风通常按 48 kHz 回调并录成 webm/opus。WebUI 在输入边界按会话状态化重采样到模型要求的 16 kHz（流式）或在静态检测中按 100 ms 源采样率分块重采样，score 公式、阈值和事件签名逻辑不变；16 kHz 上传文件直接透传。PyTorch 后端遇到 webm 等无法被 `soundfile` 识别的录音时，会先转成临时 16 kHz WAV 再交给 `KwsEngine.detect()`。
+
+麦克风流式 Tab：录音过程中周期性刷新 `live` 事件；停止录音后点击「结束并生成 final」冲刷尾部帧并把对应行标记为 `final`。同一 `channel/keyword/startMs/endMs` 只占一行，分数变化就刷新该行，不会逐帧刷屏。每个浏览器会话由 `gr.State` 持有独立 `StreamSession`，PCM 余量、cache、beam 与 cooldown 不跨会话共享；麦克风只使用一路（channel 0），不会创建多个 `AudioRecord` 音频流。
 
 ---
 
