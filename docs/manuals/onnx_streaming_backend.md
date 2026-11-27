@@ -79,7 +79,7 @@ source scripts/common/env.sh
 
 ## 6. 状态隔离与触发控制
 
-- WebUI 的「麦克风流式」Tab 只在 Android ONNX 后端可用；「上传检测」Tab 支持上传音频或直接录音，PyTorch 专用设置默认折叠。
+- WebUI 的「麦克风流式」分区只在 Android ONNX 后端显示，切到 PyTorch 后隐藏；「上传检测」分区支持上传音频或直接录音，PyTorch 专用设置默认折叠。
 - 浏览器麦克风通常按 48 kHz 回调；WebUI 在输入边界按会话状态化重采样到 16 kHz，静态检测同样按 100 ms 源采样率分块重采样。16 kHz 输入直接透传，score 公式/阈值/事件签名不变。
 - 不同 WebUI 会话通过 `gr.State` 持有独立 `StreamSession`，不会共享 PCM 余量、cache 或 beam。
 - cooldown 按 channel/关键词抑制重复事件；其他关键词不受影响。

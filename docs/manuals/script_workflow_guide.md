@@ -444,12 +444,12 @@ $PYTHON_BIN scripts/04_eval/infer_webui.py --checkpoint avg_30.pt --port 7860
 
 浏览器访问 `http://127.0.0.1:7860`。也可用根目录兼容 wrapper：`$PYTHON_BIN infer_webui.py --checkpoint avg_30.pt --port 7860`。麦克风权限：浏览器首次使用麦克风会弹出授权提示，需允许；服务绑定 `127.0.0.1`，通过 `http://` 访问即可（非 HTTPS 域名下浏览器会禁用麦克风）。
 
-页面顶部是全局「推理后端（全局）」选择器，下方按 Tab 分区：
+页面顶部是全局「推理后端（全局）」选择器，下方按上下分区展示：
 
-| Tab | 输入 | 说明 |
+| 分区 | 输入 | 说明 |
 |---|---|---|
 | `上传检测` | 上传音频或点击麦克风录音 | 左侧上传/录音，录完点「开始检测」，右侧显示结果；运行日志在默认折叠的「运行日志」里。默认 ONNX 后端会隐藏 PyTorch 专用设置，切到 PyTorch 后展开「PyTorch 设置（关键词 / checkpoint / top-k）」 |
-| `麦克风流式` | 麦克风（浏览器通常 48 kHz，自动转 16 kHz） | 仅 ONNX 后端可用；录音中实时刷新 live 事件，停止后点「结束并生成 final」；流式日志默认折叠 |
+| `麦克风流式` | 麦克风（浏览器通常 48 kHz，自动转 16 kHz） | 仅 ONNX 后端显示，切到 PyTorch 后该分区会隐藏；录音中实时刷新 live 事件，停止后点「结束并生成 final」；流式日志默认折叠 |
 
 WebUI 顶部后端选择器的两种后端：
 
@@ -462,7 +462,7 @@ WebUI 顶部后端选择器的两种后端：
 
 采样率与录音格式：浏览器麦克风通常按 48 kHz 回调并录成 webm/opus。WebUI 在输入边界按会话状态化重采样到模型要求的 16 kHz（流式）或在静态检测中按 100 ms 源采样率分块重采样，score 公式、阈值和事件签名逻辑不变；16 kHz 上传文件直接透传。PyTorch 后端遇到 webm 等无法被 `soundfile` 识别的录音时，会先转成临时 16 kHz WAV 再交给 `KwsEngine.detect()`。
 
-麦克风流式 Tab：录音过程中周期性刷新 `live` 事件；停止录音后点击「结束并生成 final」冲刷尾部帧并把对应行标记为 `final`。同一 `channel/keyword/startMs/endMs` 只占一行，分数变化就刷新该行，不会逐帧刷屏。每个浏览器会话由 `gr.State` 持有独立 `StreamSession`，PCM 余量、cache、beam 与 cooldown 不跨会话共享；麦克风只使用一路（channel 0），不会创建多个 `AudioRecord` 音频流。
+麦克风流式分区：录音过程中周期性刷新 `live` 事件；停止录音后点击「结束并生成 final」冲刷尾部帧并把对应行标记为 `final`。同一 `channel/keyword/startMs/endMs` 只占一行，分数变化就刷新该行，不会逐帧刷屏。每个浏览器会话由 `gr.State` 持有独立 `StreamSession`，PCM 余量、cache、beam 与 cooldown 不跨会话共享；麦克风只使用一路（channel 0），不会创建多个 `AudioRecord` 音频流。
 
 ---
 

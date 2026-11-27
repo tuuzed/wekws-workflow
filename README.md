@@ -106,7 +106,7 @@ bash scripts/04_eval/eval_ctc.sh
 
 `--keyword_thresholds` 必填；导出会重写 `kws.onnx`、`config.json`、`keywords.txt`、`id_to_token.json`。推理默认 checkpoint 是 `auto`（最新 epoch），部署验证必须显式传 `avg_30.pt`。`token_probs` / `frame_topk` 只用于调试，不改变 score、阈值或 `score_file` 格式。
 
-WebUI 顶部可切换「PyTorch（整段检测）」与「Android ONNX（部署口径，流式）」，下方按「上传检测 / 麦克风流式」两个 Tab 分区，PyTorch 专用设置和日志默认折叠。「上传检测」支持上传音频或直接录音；「麦克风流式」用 Android ONNX 直接加载部署资产，录音中显示 live 事件，停止后点击「结束并生成 final」标记 final。浏览器录音的 48 kHz 会在输入边界自动重采样到 16 kHz，每个会话状态隔离，详见 [ONNX 流式后端说明](docs/manuals/onnx_streaming_backend.md) 与 [脚本工作流指导](docs/manuals/script_workflow_guide.md#62-webui)。
+WebUI 顶部可切换「PyTorch（整段检测）」与「Android ONNX（部署口径，流式）」，下方按「上传检测 / 麦克风流式」上下分区，PyTorch 专用设置和日志默认折叠。「上传检测」支持上传音频或直接录音；「麦克风流式」用 Android ONNX 直接加载部署资产，录音中显示 live 事件，停止后点击「结束并生成 final」标记 final。浏览器录音的 48 kHz 会在输入边界自动重采样到 16 kHz，每个会话状态隔离，详见 [ONNX 流式后端说明](docs/manuals/onnx_streaming_backend.md) 与 [脚本工作流指导](docs/manuals/script_workflow_guide.md#62-webui)。
 
 ### 6. Android 部署验证
 

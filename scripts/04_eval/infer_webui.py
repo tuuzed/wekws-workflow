@@ -319,6 +319,7 @@ def update_backend_layout(backend):
         gr.update(value=_BACKEND_NOTE_ONNX if is_onnx else _BACKEND_NOTE_PYTORCH),
         gr.update(visible=not is_onnx),
         gr.update(interactive=is_onnx),
+        gr.update(visible=is_onnx),
     )
 
 
@@ -506,64 +507,64 @@ with gr.Blocks(title="KWS CTC 推理测试") as demo:
         with gr.Column(scale=3):
             backend_note = gr.Markdown(value=_BACKEND_NOTE_ONNX)
 
-    with gr.Tabs():
-        with gr.Tab(label="上传检测"):
-            with gr.Row():
-                with gr.Column(scale=1):
-                    audio_input = gr.Audio(
-                        label="上传音频 / 录音（录完点“开始检测”）",
-                        type="filepath",
-                        sources=["upload", "microphone"],
-                    )
-                    detect_btn = gr.Button("开始检测", variant="primary")
-                    with gr.Accordion(
-                        "PyTorch 设置（关键词 / checkpoint / top-k）",
-                        open=False,
-                        visible=False,
-                    ) as pytorch_settings:
-                        keywords_input = gr.Textbox(
-                            label="关键词（逗号分隔）",
-                            value="嗨小问,你好问问",
-                        )
-                        checkpoint_input = gr.Dropdown(
-                            label="Checkpoint（可选 avg_30.pt 或任意路径）",
-                            choices=checkpoint_choices(),
-                            value=args.checkpoint,
-                            allow_custom_value=True,
-                        )
-                        refresh_btn = gr.Button("刷新 checkpoint 列表")
-                        topk_input = gr.Checkbox(
-                            label="输出每帧 top-k（调试，日志会很长）",
-                            value=False,
-                        )
-
-                with gr.Column(scale=2):
-                    result_output = gr.Markdown(label="检测结果")
-                    with gr.Accordion("运行日志", open=False):
-                        log_output = gr.Textbox(
-                            label="日志", lines=12, interactive=False)
-
-        with gr.Tab(label="麦克风流式"):
-            gr.Markdown(
-                "选择 `Android ONNX` 后端后，下方麦克风按块送入同一个流式会话；"
-                "录音中实时刷新 live 事件。停止录音后点击「结束并生成 final」执行 flush。"
+    gr.Markdown("## 上传检测")
+    with gr.Row():
+        with gr.Column(scale=1):
+            audio_input = gr.Audio(
+                label="上传音频 / 录音（录完点“开始检测”）",
+                type="filepath",
+                sources=["upload", "microphone"],
             )
-            with gr.Row():
-                with gr.Column(scale=1):
-                    stream_audio_input = gr.Audio(
-                        label="麦克风流式输入（自动转 16 kHz，仅 ONNX）",
-                        type="numpy",
-                        sources=["microphone"],
-                        streaming=True,
-                    )
-                    with gr.Row():
-                        finalize_btn = gr.Button("结束并生成 final")
-                        clear_btn = gr.Button("清空流式结果")
-                with gr.Column(scale=1):
-                    stream_result = gr.Markdown(label="流式事件")
-                    with gr.Accordion("流式日志", open=False):
-                        stream_log = gr.Textbox(
-                            label="流式日志", lines=10, interactive=False)
+            detect_btn = gr.Button("开始检测", variant="primary")
+            with gr.Accordion(
+                "PyTorch 设置（关键词 / checkpoint / top-k）",
+                open=False,
+                visible=False,
+            ) as pytorch_settings:
+                keywords_input = gr.Textbox(
+                    label="关键词（逗号分隔）",
+                    value="嗨小问,你好问问",
+                )
+                checkpoint_input = gr.Dropdown(
+                    label="Checkpoint（可选 avg_30.pt 或任意路径）",
+                    choices=checkpoint_choices(),
+                    value=args.checkpoint,
+                    allow_custom_value=True,
+                )
+                refresh_btn = gr.Button("刷新 checkpoint 列表")
+                topk_input = gr.Checkbox(
+                    label="输出每帧 top-k（调试，日志会很长）",
+                    value=False,
+                )
+
+        with gr.Column(scale=2):
+            result_output = gr.Markdown(label="检测结果")
+            with gr.Accordion("运行日志", open=False):
+                log_output = gr.Textbox(
+                    label="日志", lines=12, interactive=False)
+
+    with gr.Column(visible=True) as stream_section:
+        gr.Markdown(
+            "## 麦克风流式\n\n"
+            "选择 `Android ONNX` 后端后，下方麦克风按块送入同一个流式会话；"
+            "录音中实时刷新 live 事件。停止录音后点击「结束并生成 final」执行 flush。"
+        )
+        with gr.Row():
+            with gr.Column(scale=1):
+                stream_audio_input = gr.Audio(
+                    label="麦克风流式输入（自动转 16 kHz，仅 ONNX）",
+                    type="numpy",
+                    sources=["microphone"],
+                    streaming=True,
+                )
+                with gr.Row():
+                    finalize_btn = gr.Button("结束并生成 final")
+                    clear_btn = gr.Button("清空流式结果")
+            with gr.Column(scale=1):
+                stream_result = gr.Markdown(label="流式事件")
+                with gr.Accordion("流式日志", open=False):
+                    stream_log = gr.Textbox(
+                        label="流式日志", lines=10, interactive=False)
 
     detect_btn.click(
         run_detection,
@@ -579,7 +580,8 @@ with gr.Blocks(title="KWS CTC 推理测试") as demo:
     backend_input.change(
         update_backend_layout,
         inputs=[backend_input],
-        outputs=[backend_note, pytorch_settings, stream_audio_input],
+        outputs=[backend_note, pytorch_settings, stream_audio_input,
+                 stream_section],
     )
     stream_audio_input.stream(
         stream_audio,
